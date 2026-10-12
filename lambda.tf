@@ -49,7 +49,7 @@ resource "aws_cloudwatch_log_group" "falco_alert" {
 # Log steam sidekick
 # -----
 resource "aws_cloudwatch_log_stream" "event" {
-  name           = "falco-attack-alert"
+  name           = "falco-events"
   log_group_name = "/falco/alerts"
 
   depends_on = [aws_cloudwatch_log_group.falco_alert]
@@ -59,7 +59,7 @@ resource "aws_cloudwatch_log_stream" "event" {
 # lambda Trigger
 # -----
 resource "aws_cloudwatch_log_subscription_filter" "falco_trigger" {
-  name            = "falco-attack-alert"
+  name            = "falco-events"
   log_group_name  = "/falco/alerts"
   filter_pattern  = "{ $.priority = \"Critical\" || $.priority = \"Emergency\" }"
   destination_arn = aws_lambda_function.quarantine_function.arn
