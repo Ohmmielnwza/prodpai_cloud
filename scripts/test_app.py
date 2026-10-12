@@ -14,4 +14,4 @@ def client():
 def test_hello_route(client):
     response = client.get("/")
     assert response.status_code == 200
-    assert b"hello Prodpai Cloud Terraform with CI/CD" in response.data
+    assert b"hello Prodpai Cloud Deploy using git action" in response.data
