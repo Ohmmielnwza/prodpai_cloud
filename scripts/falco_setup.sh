@@ -46,8 +46,6 @@ sudo mkdir -p /etc/falcosidekick
 # set env
 # fill cred after launch instance
 # -----
-sudo bash -c 'cat << EOF > /etc/falcosidekick/aws.env
-EOF'
 
 # -----
 # set loggroup/logstream
@@ -61,6 +59,47 @@ aws:
 EOF'
 
 # -----
+# set rules
+# -----
+sudo bash -c "cat << 'EOF' > /etc/falco/falco_rules.local.yaml
+# 1. ตรวจจับการวางหรือแก้ไขไฟล์ Executable ใต้ /bin, /sbin, /usr/bin บน Host
+- rule: Host System Binary Tampering
+  desc: Detect write attempt to system binary directories on host
+  condition: >
+    (evt.type in (open, openat) and evt.is_open_write=true and fd.typechar='f')
+    and fd.directory in (/bin, /sbin, /usr/bin, /usr/sbin)
+    and not proc.name in (apt, dpkg, yum, rpm)
+  output: >
+    Critical: File created or modified in binary directory (user=%user.name command=%proc.cmdline file=%fd.name)
+  priority: Critical
+  tags: [host, filesystem, binary_tampering]
+
+# 2. ตรวจจับการสร้างไฟล์หรือ Backdoor ในโฟลเดอร์ Web Root (/var/www)
+- rule: Unauthorized Web Root Modification
+  desc: Detect changes to web application files
+  condition: >
+    (evt.type in (open, openat) and evt.is_open_write=true and fd.typechar='f')
+    and fd.directory startswith /var/www
+    and not proc.name in (git, composer, npm)
+  output: >
+    Critical: Modification inside web root directory (user=%user.name command=%proc.cmdline file=%fd.name)
+  priority: Critical
+  tags: [host, web, file_integrity]
+
+# 3. ตรวจจับเมื่อ Web Service มีการสั่งรัน Shell (จำลอง RCE / Web Shell)
+- rule: Shell Spawned by Web User
+  desc: Detect shell process spawned under web server user
+  condition: >
+    evt.type in (execve, execveat) and evt.dir=<
+    and proc.name in (bash, sh, dash, zsh)
+    and user.name in (www-data, nginx, apache)
+  output: >
+    Critical: Shell spawned under web service user (user=%user.name command=%proc.cmdline parent=%proc.pname)
+  priority: Critical
+  tags: [host, rce, web_shell]
+EOF"
+
+# -----
 # setup falcosidekick service
 # -----
 sudo bash -c 'cat << EOF > /etc/systemd/system/falcosidekick.service
@@ -72,7 +111,8 @@ After=network.target
 ExecStart=/usr/local/bin/falcosidekick -c /etc/falcosidekick/config.yaml
 Restart=always
 User=root
-EnvironmentFile=/etc/falcosidekick/aws.env
+Environment="AWS_REGION=us-east-1"
+Environment="AWS_DEFAULT_REGION=us-east-1"
 
 [Install]
 WantedBy=multi-user.target
@@ -84,21 +124,6 @@ sudo systemctl restart falco-modern-bpf
 sudo systemctl enable falcosidekick.service
 sudo systemctl restart falcosidekick
 
-sudo apt-get install -y nginx
-sudo rm -f /var/www/html/index.nginx-debian.html
-sudo rm -f /var/www/html/index.html
-sudo bash -c 'cat << 'EOF' > /var/www/html/index.html
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>Prodpai Cloud</title>
-</head>
-<body>
-    <h1>hello Prodpai Cloud</h1>
-</body>
-</html>
-EOF'
 sudo chown www-data:www-data /var/www/html/index.html
 sudo chmod 644 /var/www/html/index.html
 sudo systemctl enable nginx
