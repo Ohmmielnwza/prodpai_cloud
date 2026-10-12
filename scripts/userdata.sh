@@ -17,4 +17,4 @@ ECR_REGISTRY=$(echo "${ECR_URL}" | cut -d'/' -f1)
 aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR_REGISTRY
 
 docker pull ${ECR_URL}:${IMAGE_TAG}
-docker run -d --restart always -p 80:80 ${ECR_URL}:${IMAGE_TAG}
+docker run -d --restart always -p 80:8080 ${ECR_URL}:${IMAGE_TAG}
