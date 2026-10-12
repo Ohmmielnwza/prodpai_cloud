@@ -13,10 +13,10 @@ export const options = {
       executor: 'ramping-vus',
       startVUs: 10,
       stages: [
-        { duration: '1m', target: 50 },   // Warm-up
-        { duration: '2m', target: 150 },  // เกิน Capacity มาตรฐานของ 1-2 instance
-        { duration: '3m', target: 300 },  // จุด Stress: ดัน CPU/Memory ให้ชน 100%
-        { duration: '2m', target: 450 },  // ขยี้ระบบเพื่อดู ALB Queue & Dropped connections
+        { duration: '1m', target: 10 },   // Warm-up
+        { duration: '1m', target: 30 },  // เกิน Capacity มาตรฐานของ 1-2 instance
+        { duration: '5m', target: 30 },  // จุด Stress: ดัน CPU/Memory ให้ชน 100%
+        { duration: '2m', target: 30 },  // ขยี้ระบบเพื่อดู ALB Queue & Dropped connections
         { duration: '2m', target: 0 },    // สังเกตการฟื้นตัว (Recovery phase)
       ],
       gracefulRampDown: '30s',
@@ -29,11 +29,14 @@ export const options = {
 };
 
 export default function () {
-  const TARGET_URL = 'http://prod-pai-env-lb-1228542498.us-east-1.elb.amazonaws.com/';
+  const TARGET_URL = 'http://prod-pai-env-lb-1847368857.us-east-1.elb.amazonaws.com/';
 
   const res = http.get(TARGET_URL, {
     timeout: '6s',
-    headers: { 'User-Agent': 'k6-stress-test-agent' },
+    headers: { 
+      'User-Agent': 'k6-stress-test-agent',
+      'Connection': 'close'
+    },
   });
 
   const isSuccess = check(res, {
