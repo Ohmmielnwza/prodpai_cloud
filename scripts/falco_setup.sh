@@ -123,9 +123,3 @@ sudo systemctl enable falco-modern-bpf
 sudo systemctl restart falco-modern-bpf
 sudo systemctl enable falcosidekick.service
 sudo systemctl restart falcosidekick
-
-sudo chown www-data:www-data /var/www/html/index.html
-sudo chmod 644 /var/www/html/index.html
-sudo systemctl enable nginx
-sudo systemctl restart nginx
-sudo systemctl status nginx --no-pager
