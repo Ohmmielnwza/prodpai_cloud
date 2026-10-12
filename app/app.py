@@ -4,7 +4,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def hello():
-    return "hello Prodpai Cloud Test Deploy"
+    return "hello Prodpai Cloud Deploy using git action"
 
 @app.route('/health')
 def health_check():
