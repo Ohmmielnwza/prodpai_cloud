@@ -1,9 +1,9 @@
 # -----
-# waf request limit 100/minutes
+# waf request limit 100/minutes + Managed Rules (SQLi & XSS)
 # -----
 resource "aws_wafv2_web_acl" "web_rate_limit" {
   name        = "${local.name_prefix}-rate-limit"
-  description = "WAF rate base rule for access web"
+  description = "WAF rate base rule and managed security rules for access web"
   scope       = "REGIONAL"
 
   default_action {
@@ -17,6 +17,9 @@ resource "aws_wafv2_web_acl" "web_rate_limit" {
     sampled_requests_enabled   = true
   }
 
+  # ---------------------------------------------------------
+  # Rule 1: Rate Limit (100 req/min | GET)
+  # ---------------------------------------------------------
   rule {
     name     = "web_rate"
     priority = 1
@@ -51,6 +54,56 @@ resource "aws_wafv2_web_acl" "web_rate_limit" {
     visibility_config {
       cloudwatch_metrics_enabled = true
       metric_name                = "web_rate_metric"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  # ---------------------------------------------------------
+  # Rule 2: SQL Injection
+  # ---------------------------------------------------------
+  rule {
+    name     = "AWS-AWSManagedRulesSQLiRuleSet"
+    priority = 2
+
+    override_action {
+      none {}
+    }
+
+    statement {
+      managed_rule_group_statement {
+        name        = "AWSManagedRulesSQLiRuleSet"
+        vendor_name = "AWS"
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "AWSManagedRulesSQLiRuleSetMetric"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  # ---------------------------------------------------------
+  # Rule 3: XSS, LFI 
+  # ---------------------------------------------------------
+  rule {
+    name     = "AWS-AWSManagedRulesCommonRuleSet"
+    priority = 3
+
+    override_action {
+      none {}
+    }
+
+    statement {
+      managed_rule_group_statement {
+        name        = "AWSManagedRulesCommonRuleSet"
+        vendor_name = "AWS"
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "AWSManagedRulesCommonRuleSetMetric"
       sampled_requests_enabled   = true
     }
   }
