@@ -10,3 +10,5 @@ note.txt
 .terraform/
 .terraform.lock.hcl.tmp
 .ssh/
+currentinfra.json
+dashboard/current_infra.json
