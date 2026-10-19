@@ -133,6 +133,6 @@
             # --fail-with-body ให้ step ล้มเมื่อ dashboard ตอบ error แทนที่จะขึ้นว่าสำเร็จ
             curl --fail-with-body --retry 3 --retry-delay 10 -X POST -H "Content-Type: application/json" \
                 --data-binary @currentinfra.json \
-                https://dashboard-prod-pai-cloud.onrender.com/api/update
+                https://https://prodpai-cloud.onrender.com/api/update
             
             echo "✅ Sent infrastructure status to Web API successfully."
