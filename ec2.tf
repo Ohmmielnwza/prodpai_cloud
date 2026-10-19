@@ -30,9 +30,11 @@ resource "aws_instance" "prodpai_instance" {
   connection {
     type        = "ssh"
     user        = "ubuntu"
-    private_key = tls_private_key.generated_key.private_key_pem
+    private_key = tls_private_key.genKey.private_key_pem
     host        = self.public_ip
   }
+
+  depends_on = [aws_key_pair.deployer]
 
   provisioner "remote-exec" {
     script = "${path.module}/scripts/falco_setup.sh"
@@ -74,7 +76,7 @@ resource "aws_launch_template" "prodpai_web_template" {
   name_prefix   = "${local.name_prefix}-"
   image_id      = aws_ami_from_instance.web_ami.id
   instance_type = var.instance_type
-  key_name      = aws_key_pair.generated_key.key_name
+  key_name      = tls_private_key.genKey.private_key_pem
   user_data = base64encode(templatefile("${path.module}/scripts/userdata.sh", {
     IMAGE_TAG = var.image_tag
     ECR_URL   = data.aws_ecr_repository.app_repo.repository_url
