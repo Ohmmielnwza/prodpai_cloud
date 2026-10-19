@@ -30,7 +30,7 @@ resource "aws_instance" "prodpai_instance" {
   connection {
     type        = "ssh"
     user        = "ubuntu"
-    private_key = aws_key_pair.deployer.key_name
+    private_key = tls_private_key.genKey.private_key_pem
     host        = self.public_ip
   }
 
