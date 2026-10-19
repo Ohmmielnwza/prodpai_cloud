@@ -25,12 +25,12 @@ resource "aws_instance" "prodpai_instance" {
   # user_data_base64            = filebase64("${path.module}/scripts/userdata.sh")
   associate_public_ip_address = true
   iam_instance_profile        = "LabInstanceProfile"
-  key_name                    = "fcfalco"
+  key_name                    = aws_key_pair.deployer.key_name
 
   connection {
     type        = "ssh"
     user        = "ubuntu"
-    private_key = file("${path.module}/.ssh/fcfalco.pem")
+    private_key = tls_private_key.generated_key.private_key_pem
     host        = self.public_ip
   }
 

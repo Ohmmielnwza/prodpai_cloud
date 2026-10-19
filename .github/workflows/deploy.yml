@@ -117,12 +117,6 @@
           with:
             terraform_version: 1.9.8
 
-        - name: Create SSH Key for Provisioner
-          run: |
-            mkdir -p .ssh
-            echo "${{ secrets.SSH_PRIVATE_KEY }}" > .ssh/fcfalco.pem
-            chmod 600 .ssh/fcfalco.pem
-
         - name: Clean Terraform Cache
           run: rm -rf .terraform .terraform.lock.hcl
 
