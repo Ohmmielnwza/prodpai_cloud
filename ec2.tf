@@ -30,7 +30,7 @@ resource "aws_instance" "prodpai_instance" {
   connection {
     type        = "ssh"
     user        = "ubuntu"
-    private_key = tls_private_key.genKey.private_key_pem
+    private_key = aws_key_pair.deployer.key_name
     host        = self.public_ip
   }
 
@@ -76,7 +76,7 @@ resource "aws_launch_template" "prodpai_web_template" {
   name_prefix   = "${local.name_prefix}-"
   image_id      = aws_ami_from_instance.web_ami.id
   instance_type = var.instance_type
-  key_name      = tls_private_key.genKey.private_key_pem
+  key_name      = aws_key_pair.deployer.key_name
   user_data = base64encode(templatefile("${path.module}/scripts/userdata.sh", {
     IMAGE_TAG = var.image_tag
     ECR_URL   = data.aws_ecr_repository.app_repo.repository_url
