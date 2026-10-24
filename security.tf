@@ -74,7 +74,7 @@ resource "aws_security_group" "lb_sg" {
 # qaurantine security group
 # -----
 resource "aws_security_group" "falco_sg" {
-  name        = "sg-ec2-compromise-isolatation"
+  name        = "ec2-compromise-isolatation-sg"
   description = "Deny any port any IP for isolation instance"
   vpc_id      = aws_vpc.main.id
 
