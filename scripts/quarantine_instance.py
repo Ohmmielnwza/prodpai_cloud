@@ -4,10 +4,11 @@ import gzip
 import boto3
 import os
 
-# Connect AWS EC2 API
+# Connect AWS APIs
 ec2 = boto3.client('ec2')
+asg = boto3.client('autoscaling')  # เพิ่ม Client สำหรับ Auto Scaling
 
-# Take Security Group' ID ( quarantine_security)
+# Take Security Group ID (quarantine_security)
 ISOLATED_SG_ID = os.environ.get('ISOLATED_SG_ID')
 
 def lambda_handler(event, context):
@@ -17,10 +18,9 @@ def lambda_handler(event, context):
     uncompressed_payload = gzip.decompress(compressed_payload)
     log_payload = json.loads(uncompressed_payload)
     
-    # 2. วนลูปอ่านทุกเหตุการณ์ (Log Events) ที่ส่งมาในรอบนี้
+    # 2. วนลูปอ่านทุกเหตุการณ์ (Log Events)
     for log_event in log_payload.get('logEvents', []):
         try:
-            # แปลงข้อความ Log (ของ Falco) ให้เป็น JSON Dictionary
             falco_alert = json.loads(log_event['message'])
             
             # ดึงข้อมูลสำคัญจาก Falco
@@ -30,12 +30,9 @@ def lambda_handler(event, context):
             hostname = falco_alert.get('hostname', '')
             
             # ==========================================
-            # 3. ตั้งเงื่อนไข "การถูกยึดเครื่อง (Compromised)"
+            # 3. เงื่อนไข "การถูกยึดเครื่อง (Compromised)"
             # ==========================================
-            # เช็คจากระดับความรุนแรง (Severity)
             critical_priorities = ["Critical", "Emergency", "Alert"]
-            
-            # หรือเช็คจาก "ชื่อพฤติกรรม" ที่แฮกเกอร์ชอบทำ
             compromised_rules = [
                 "Terminal shell in container", 
                 "Run shell untrusted",
@@ -46,40 +43,78 @@ def lambda_handler(event, context):
             is_compromised = (priority in critical_priorities) or (rule in compromised_rules)
             
             if is_compromised:
-                # สมมติว่าตั้งชื่อ Hostname เป็น Instance ID ไว้ (เช่น i-0abcd1234...)
                 instance_id = hostname
                 
                 if instance_id.startswith('i-'):
-                    # ==========================================
-                    # 4. พิมพ์ Output รายละเอียด "ก่อน" ลงมือ (บันทึกลง Log ของ Lambda)
-                    # ==========================================
                     print("="*60)
                     print(f"🚨 [THREAT DETECTED] EC2 Instance Compromised!")
                     print(f"   📌 Instance ID : {instance_id}")
                     print(f"   🔥 Severity    : {priority}")
                     print(f"   📜 Rule Broken : {rule}")
-                    print(f"   📝 Details     : {output}")
-                    print(f"   🛡️ Action      : Isolating instance to Air-Gap SG ({ISOLATED_SG_ID}) for Forensics...")
                     print("="*60)
                     
+                    # ขอข้อมูล Instance แค่ครั้งเดียว เพื่อนำไปใช้ทั้งหา ASG และ EBS
+                    try:
+                        instance_info = ec2.describe_instances(InstanceIds=[instance_id])
+                        instance_data = instance_info['Reservations'][0]['Instances'][0]
+                        
+                        # ==========================================
+                        # [เพิ่มใหม่] 4. สั่ง Detach ออกจาก ASG
+                        # ==========================================
+                        tags = instance_data.get('Tags', [])
+                        asg_name = next((tag['Value'] for tag in tags if tag['Key'] == 'aws:autoscaling:groupName'), None)
+                        
+                        if asg_name:
+                            print(f"🔧 Detaching {instance_id} from ASG: {asg_name}...")
+                            asg.detach_instances(
+                                InstanceIds=[instance_id],
+                                AutoScalingGroupName=asg_name,
+                                ShouldDecrementDesiredCapacity=False # สำคัญ: สั่งให้ ASG สร้างเครื่องใหม่มาแทน
+                            )
+                            print("✅ Successfully detached from ASG.")
+                            
+                        # ==========================================
+                        # [เพิ่มใหม่] 5. ทำ EBS Snapshot เก็บหลักฐาน
+                        # ==========================================
+                        block_devices = instance_data.get('BlockDeviceMappings', [])
+                        for device in block_devices:
+                            volume_id = device['Ebs']['VolumeId']
+                            device_name = device['DeviceName']
+                            print(f"📸 Starting Snapshot for Volume {volume_id}...")
+                            
+                            ec2.create_snapshot(
+                                VolumeId=volume_id,
+                                Description=f"Forensic Snapshot for Compromised Instance {instance_id}",
+                                TagSpecifications=[{
+                                    'ResourceType': 'snapshot',
+                                    'Tags': [
+                                        {'Key': 'Name', 'Value': f"forensic-{instance_id}-{device_name.replace('/', '_')}"},
+                                        {'Key': 'Case', 'Value': 'IncidentResponse'},
+                                        {'Key': 'CompromisedInstanceId', 'Value': instance_id}
+                                    ]
+                                }]
+                            )
+                            print(f"✅ Created Snapshot for {volume_id} successfully.")
+                            
+                    except Exception as inner_err:
+                        print(f"⚠️ [WARNING] Failed during ASG Detach or Snapshot: {inner_err}")
+
                     # ==========================================
-                    # 5. สั่งตัดเน็ต (ย้ายเข้า Air-Gap SG)
+                    # 6. สั่งตัดเน็ต (ย้ายเข้า Air-Gap SG)
                     # ==========================================
-                    # คำสั่งนี้จะถอด SG เดิมออกทั้งหมด และใส่ SG ห้องกักกันเข้าไปแทน
+                    print(f"🛡️ Isolating instance to Air-Gap SG ({ISOLATED_SG_ID})...")
                     ec2.modify_instance_attribute(
                         InstanceId=instance_id,
                         Groups=[ISOLATED_SG_ID]
                     )
-                    
                     print(f"✅ [SUCCESS] Instance {instance_id} has been successfully air-gapped.")
                 else:
-                    print(f"⚠️ [WARNING] Threat detected, but hostname '{hostname}' is not a valid AWS Instance ID. Cannot isolate.")
+                    print(f"⚠️ [WARNING] Hostname '{hostname}' is not a valid AWS Instance ID.")
             else:
-                print(f"ℹ️ [INFO] Alert received (Priority: {priority}, Rule: {rule}). Not critical enough for isolation. Skipping.")
+                print(f"ℹ️ [INFO] Alert skipped (Priority: {priority}, Rule: {rule}).")
                 
         except Exception as e:
             print(f"❌ [ERROR] Failed to process log event: {e}")
-            print(f"Raw event: {log_event['message']}")
             
     return {
         "statusCode": 200,
