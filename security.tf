@@ -7,6 +7,14 @@ resource "aws_security_group" "allow_web" {
   vpc_id      = aws_vpc.main.id
 
   ingress {
+    description = "ssh for falco-script"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = var.cidr_allow_all
+  }
+
+  ingress {
     description = "dashboard acess"
     from_port   = 5000
     to_port     = 5000
