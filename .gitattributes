@@ -1,0 +1,15 @@
+# ทุกไฟล์ข้อความเก็บเป็น LF ในที่เก็บเสมอ
+#
+# เหตุผล: สคริปต์ใน scripts/ ถูกส่งไปรันบน Ubuntu ทั้งทาง remote-exec และ user_data
+# ถ้าไฟล์ติด CRLF มา bash จะอ่าน \r เป็นส่วนหนึ่งของคำสั่งแล้วตายด้วย exit status 127
+# ซึ่งเป็นกับดักที่ README เตือนไว้ ตั้งตรงนี้ให้ git บังคับแทนการไปหวังพึ่ง core.autocrlf ของแต่ละเครื่อง
+* text=auto eol=lf
+
+*.sh   text eol=lf
+*.py   text eol=lf
+*.tf   text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+
+*.zip binary
+*.png binary
