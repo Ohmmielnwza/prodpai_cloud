@@ -6,14 +6,8 @@ resource "aws_security_group" "allow_web" {
   description = "Allow inbound traffic"
   vpc_id      = aws_vpc.main.id
 
-  ingress {
-    description = "ssh for falco-script"
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = var.cidr_allow_all
-  }
-
+  # ไม่มี SSH แล้ว: เครื่องใน ASG อยู่ private subnet และไม่มีใครต้อง ssh เข้า
+  # SSH มีไว้แค่ตอน Terraform ลง Falco บนเครื่อง builder ซึ่งใช้ builder_sg ด้านล่าง
   ingress {
     description     = "HTTP from ALB"
     from_port       = 80
@@ -38,6 +32,42 @@ resource "aws_security_group" "allow_web" {
 
   depends_on = [aws_security_group.lb_sg]
 
+}
+
+# -----
+# security group ของเครื่อง builder (ใช้ปั้น AMI แล้ว terminate ทิ้ง)
+#
+# แยกจาก allow_web เพราะ builder ต้องเปิด SSH ให้ remote-exec ลง Falco
+# ถ้าใช้ SG ร่วมกัน เครื่องใน ASG จะได้ SSH ติดไปด้วย
+# SSH รับเฉพาะ IP ที่ส่งมาทาง var.builder_ssh_cidrs (infra_setup.yaml ส่ง IP ของ runner)
+# -----
+resource "aws_security_group" "builder_sg" {
+  name        = "image-builder-sg"
+  description = "SSH from the Terraform runner only, for baking the AMI"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "ssh for falco-script from the Terraform runner"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = var.builder_ssh_cidrs
+  }
+
+  # builder ต้องออกไป apt / download.falco.org / github ได้
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = var.cidr_allow_all
+  }
+
+  tags = merge(
+    local.common_tag,
+    {
+      Name = "${local.name_prefix}-image-builder"
+    }
+  )
 }
 
 # -----

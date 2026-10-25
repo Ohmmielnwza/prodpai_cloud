@@ -11,11 +11,11 @@ data "aws_ami" "ubuntu" {
 }
 
 data "aws_ecr_repository" "app_repo" {
-  name = "plodphai-todo-list"
+  name = var.app_ecr_repository
 }
 
 data "aws_ecr_repository" "dashboard_repo" {
-  name = "prodpai_dashboard"
+  name = var.dashboard_ecr_repository
 }
 
 # -----
@@ -25,7 +25,7 @@ resource "aws_instance" "prodpai_instance" {
   ami                    = data.aws_ami.ubuntu.id
   instance_type          = var.instance_type
   subnet_id              = aws_subnet.public_zone[0].id
-  vpc_security_group_ids = [aws_security_group.allow_web.id]
+  vpc_security_group_ids = [aws_security_group.builder_sg.id]
   # user_data_base64            = filebase64("${path.module}/scripts/userdata.sh")
   associate_public_ip_address = true
   iam_instance_profile        = "LabInstanceProfile"
@@ -40,6 +40,13 @@ resource "aws_instance" "prodpai_instance" {
 
   provisioner "remote-exec" {
     script = "${path.module}/scripts/falco_setup.sh"
+  }
+
+  lifecycle {
+    precondition {
+      condition     = length(var.builder_ssh_cidrs) > 0
+      error_message = "builder_ssh_cidrs is empty, so remote-exec cannot reach the builder. Pass the runner IP, e.g. -var='builder_ssh_cidrs=[\"1.2.3.4/32\"]'."
+    }
   }
 
   tags = merge(

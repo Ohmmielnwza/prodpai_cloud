@@ -35,9 +35,7 @@ concurrency:
 
 env:
   AWS_REGION: us-east-1
-  # repository ที่ ec2.tf ดึง image ของแอปไปใช้
-  ECR_REPOSITORY: plodphai-todo-list
-  DASHBOARD_REPOSITORY: prodpai_dashboard
+  # ชื่อ bucket และ ECR อ่านจาก .github/config.env (ดู step Load shared config)
   IMAGE_TAG: ${{ inputs.image_tag }}
 
 jobs:
@@ -48,6 +46,26 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # ชื่อ bucket / ECR ของ account นี้อยู่ที่ .github/config.env ที่เดียว
+      # ส่งต่อให้ step ถัดไป (env) และให้ Terraform (TF_VAR_*) ในทีเดียว
+      - name: Load shared config
+        run: |
+          grep -E '^[A-Z_]+=' .github/config.env | tr -d '\r' > "$RUNNER_TEMP/config.env"
+          set -a; . "$RUNNER_TEMP/config.env"; set +a
+          for key in TF_STATE_BUCKET DATA_BUCKET APP_ECR_REPOSITORY DASHBOARD_ECR_REPOSITORY; do
+            if [ -z "${!key:-}" ]; then
+              echo "::error::$key is missing from .github/config.env"
+              exit 1
+            fi
+          done
+          {
+            cat "$RUNNER_TEMP/config.env"
+            echo "TF_VAR_data_bucket=$DATA_BUCKET"
+            echo "TF_VAR_app_ecr_repository=$APP_ECR_REPOSITORY"
+            echo "TF_VAR_dashboard_ecr_repository=$DASHBOARD_ECR_REPOSITORY"
+          } >> "$GITHUB_ENV"
+          echo "state: s3://$TF_STATE_BUCKET  data: s3://$DATA_BUCKET  ecr: $APP_ECR_REPOSITORY, $DASHBOARD_ECR_REPOSITORY"
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -60,9 +78,9 @@ jobs:
       # ถ้า image ที่ขอไม่มีจริง ASG จะปั้นเครื่องที่ pull ไม่ขึ้นมาทั้งชุด ตรวจก่อนดีกว่า
       - name: Check application image exists in ECR
         run: |
-          if ! aws ecr describe-images --repository-name "$ECR_REPOSITORY" \
+          if ! aws ecr describe-images --repository-name "$APP_ECR_REPOSITORY" \
                --image-ids imageTag="$IMAGE_TAG" >/dev/null 2>&1; then
-            echo "::error::$ECR_REPOSITORY:$IMAGE_TAG is not in ECR (wait for the app's CI to push it)"
+            echo "::error::$APP_ECR_REPOSITORY:$IMAGE_TAG is not in ECR (wait for the app's CI to push it)"
             exit 1
           fi
 
@@ -82,7 +100,7 @@ jobs:
       # bucket นี้ตั้งใจสร้างนอก Terraform เพราะต้องอยู่รอดจาก destroy
       - name: Ensure dashboard data bucket exists
         run: |
-          bucket=prod-pai-logs
+          bucket="$DATA_BUCKET"
           if ! aws s3api head-bucket --bucket "$bucket" 2>/dev/null; then
             echo "Creating s3://$bucket"
             aws s3api create-bucket --bucket "$bucket" --region "$AWS_REGION"
@@ -102,19 +120,19 @@ jobs:
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           TAG: ${{ github.sha }}
         run: |
-          aws ecr describe-repositories --repository-names "$DASHBOARD_REPOSITORY" >/dev/null 2>&1 \
-            || aws ecr create-repository --repository-name "$DASHBOARD_REPOSITORY" >/dev/null
+          aws ecr describe-repositories --repository-names "$DASHBOARD_ECR_REPOSITORY" >/dev/null 2>&1 \
+            || aws ecr create-repository --repository-name "$DASHBOARD_ECR_REPOSITORY" >/dev/null
           docker build -f dashboard/Dockerfile \
-            -t "$REGISTRY/$DASHBOARD_REPOSITORY:$TAG" \
-            -t "$REGISTRY/$DASHBOARD_REPOSITORY:latest" ./dashboard
-          docker push "$REGISTRY/$DASHBOARD_REPOSITORY:$TAG"
-          docker push "$REGISTRY/$DASHBOARD_REPOSITORY:latest"
+            -t "$REGISTRY/$DASHBOARD_ECR_REPOSITORY:$TAG" \
+            -t "$REGISTRY/$DASHBOARD_ECR_REPOSITORY:latest" ./dashboard
+          docker push "$REGISTRY/$DASHBOARD_ECR_REPOSITORY:$TAG"
+          docker push "$REGISTRY/$DASHBOARD_ECR_REPOSITORY:latest"
 
       - name: Scan dashboard image
         if: ${{ !inputs.skip_dashboard_build }}
         uses: aquasecurity/trivy-action@0.28.0
         with:
-          image-ref: ${{ steps.login-ecr.outputs.registry }}/prodpai_dashboard:${{ github.sha }}
+          image-ref: ${{ steps.login-ecr.outputs.registry }}/${{ env.DASHBOARD_ECR_REPOSITORY }}:${{ github.sha }}
           scan-type: image
           scanners: vuln
           severity: CRITICAL,HIGH
@@ -131,14 +149,28 @@ jobs:
       - name: Terraform format and validate
         run: |
           terraform fmt -check -recursive
-          terraform init -input=false
+          # bucket ของ state ต้องมีอยู่ก่อน Terraform ไม่สร้างให้
+          if ! aws s3api head-bucket --bucket "$TF_STATE_BUCKET" 2>/dev/null; then
+            echo "::error::state bucket s3://$TF_STATE_BUCKET ไม่มีหรือไม่ใช่ของ account นี้ (แก้ TF_STATE_BUCKET ใน .github/config.env)"
+            exit 1
+          fi
+          terraform init -input=false -backend-config="bucket=$TF_STATE_BUCKET"
           terraform validate
 
+      # remote-exec ssh จาก runner ตัวนี้เข้า builder จึงเปิด SSH ให้แค่ IP ของ runner
+      # ค่าที่ได้คือ IP ขาออกของ runner และใช้ได้จนจบ job นี้
       - name: Terraform plan
         run: |
+          runner_ip=$(curl -fsS https://checkip.amazonaws.com | tr -d '[:space:]')
+          if ! echo "$runner_ip" | grep -Eq '^([0-9]{1,3}\.){3}[0-9]{1,3}$'; then
+            echo "::error::อ่าน IP ของ runner ไม่ได้ ($runner_ip)"
+            exit 1
+          fi
+          echo "builder SSH เปิดให้ $runner_ip/32 เท่านั้น"
           terraform plan -input=false -out=tfplan \
             -var="image_tag=$IMAGE_TAG" \
-            -var="dashboard_image_tag=${{ github.sha }}"
+            -var="dashboard_image_tag=${{ github.sha }}" \
+            -var="builder_ssh_cidrs=[\"$runner_ip/32\"]"
 
       - name: Terraform apply
         run: terraform apply -input=false -auto-approve tfplan
@@ -154,11 +186,16 @@ jobs:
               states=$(aws elbv2 describe-target-health --target-group-arn "$tg" \
                         --query 'TargetHealthDescriptions[].TargetHealth.State' --output text)
               echo "  $states"
-              if [ -n "$states" ] && ! echo "$states" | grep -qv healthy; then
-                break
+              # เทียบทั้งบรรทัด (-x) เพราะคำว่า "unhealthy" มี "healthy" อยู่ข้างใน
+              # ถ้าเทียบแบบ grep ธรรมดา target ที่ unhealthy ทุกตัวจะถูกนับว่าผ่าน
+              if [ -n "$states" ] && ! echo "$states" | tr '\t' '\n' | grep -qvx healthy; then
+                echo "  healthy ครบแล้ว"
+                continue 2
               fi
               sleep 15
             done
+            echo "::error::$tg ยังไม่ healthy ครบภายใน 10 นาที"
+            exit 1
           done
 
       - name: Summary

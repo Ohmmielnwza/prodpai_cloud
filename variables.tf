@@ -22,6 +22,19 @@ variable "cidr_allow_all" {
   description = "Allow IP anywhere"
 }
 
+# default ว่างไว้ให้ terraform destroy (destroy.yml) ไม่ต้องส่งค่านี้
+# ส่วน plan / apply ทุกครั้ง precondition ใน ec2.tf บังคับให้ส่ง (infra_setup.yaml ส่ง IP ของ runner)
+variable "builder_ssh_cidrs" {
+  type        = list(string)
+  default     = []
+  description = "CIDRs allowed to SSH into the AMI builder (the machine running Terraform)"
+
+  validation {
+    condition     = !contains(var.builder_ssh_cidrs, "0.0.0.0/0")
+    error_message = "Do not open SSH on the builder to 0.0.0.0/0; pass the runner IP as /32."
+  }
+}
+
 variable "instance_type" {
   type        = string
   default     = "t3.small"
@@ -59,10 +72,22 @@ variable "dashboard_instance_type" {
 
 # Bucket นี้ "สร้างเอง" นอก Terraform (ดู HANDOFF.md) เพราะเป็นที่เก็บ state ของ dashboard
 # ที่ต้องรอดจาก terraform destroy ไม่ใช่ resource ที่ถูกสร้าง-ลบตามรอบ deploy
+#
+# ไม่มี default: ชื่อ bucket / ECR มาจาก .github/config.env ที่เดียว (workflow ส่งเป็น TF_VAR_*)
+# ถ้าลืมส่ง Terraform จะถามหาค่า แทนที่จะแอบไปใช้ชื่อของ account คนอื่น
 variable "data_bucket" {
   type        = string
-  default     = "prod-pai-logs"
-  description = "Existing S3 bucket the aggregator writes to and the dashboard reads from"
+  description = "Existing S3 bucket the aggregator writes to and the dashboard reads from (DATA_BUCKET in .github/config.env)"
+}
+
+variable "app_ecr_repository" {
+  type        = string
+  description = "ECR repository of the todo-list app (APP_ECR_REPOSITORY in .github/config.env)"
+}
+
+variable "dashboard_ecr_repository" {
+  type        = string
+  description = "ECR repository of the dashboard image (DASHBOARD_ECR_REPOSITORY in .github/config.env)"
 }
 
 variable "data_key" {

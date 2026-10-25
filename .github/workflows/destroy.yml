@@ -3,7 +3,7 @@ name: Destroy
 # Manual only, run by us as the owner of the AWS account: removes everything
 # Terraform created from this repository — the dashboard EC2 included, since it is
 # part of the Terraform configuration now.
-# ECR images, the Terraform state bucket and the dashboard data bucket (prod-pai-logs)
+# ECR images, the Terraform state bucket and the dashboard data bucket (DATA_BUCKET in .github/config.env)
 # are deliberately outside Terraform and stay, so snapshots and incident records survive.
 
 on:
@@ -35,6 +35,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # ชื่อ bucket / ECR ของ account นี้อยู่ที่ .github/config.env ที่เดียว
+      # ส่งต่อให้ step ถัดไป (env) และให้ Terraform (TF_VAR_*) ในทีเดียว
+      - name: Load shared config
+        run: |
+          grep -E '^[A-Z_]+=' .github/config.env | tr -d '\r' > "$RUNNER_TEMP/config.env"
+          set -a; . "$RUNNER_TEMP/config.env"; set +a
+          for key in TF_STATE_BUCKET DATA_BUCKET APP_ECR_REPOSITORY DASHBOARD_ECR_REPOSITORY; do
+            if [ -z "${!key:-}" ]; then
+              echo "::error::$key is missing from .github/config.env"
+              exit 1
+            fi
+          done
+          {
+            cat "$RUNNER_TEMP/config.env"
+            echo "TF_VAR_data_bucket=$DATA_BUCKET"
+            echo "TF_VAR_app_ecr_repository=$APP_ECR_REPOSITORY"
+            echo "TF_VAR_dashboard_ecr_repository=$DASHBOARD_ECR_REPOSITORY"
+          } >> "$GITHUB_ENV"
+          echo "state: s3://$TF_STATE_BUCKET  data: s3://$DATA_BUCKET  ecr: $APP_ECR_REPOSITORY, $DASHBOARD_ECR_REPOSITORY"
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -49,9 +69,29 @@ jobs:
           terraform_version: 1.9.8
           terraform_wrapper: false
 
+      # The quarantine Lambda detaches a compromised instance from the ASG and leaves it
+      # running in falco_sg. Terraform does not know that instance, so it still holds the
+      # subnet and falco_sg and the destroy fails with DependencyViolation.
+      # The evidence survives: forensic snapshots and the volumes (DeleteOnTermination=false) stay.
+      - name: Terminate quarantined instances
+        run: |
+          ids=$(aws ec2 describe-instances \
+            --filters "Name=tag:SecurityStatus,Values=Compromised" \
+                      "Name=tag:Project,Values=prod-pai" \
+                      "Name=instance-state-name,Values=pending,running,stopping,stopped,shutting-down" \
+            --query 'Reservations[].Instances[].InstanceId' --output text)
+          if [ -z "$ids" ]; then
+            echo "No quarantined instances"
+            exit 0
+          fi
+          echo "Terminating quarantined instances: $ids"
+          aws ec2 terminate-instances --instance-ids $ids >/dev/null
+          aws ec2 wait instance-terminated --instance-ids $ids
+          echo "Terminated"
+
       - name: Terraform destroy
         run: |
-          terraform init -input=false
+          terraform init -input=false -backend-config="bucket=$TF_STATE_BUCKET"
           # The ASG drain can exceed Terraform's 10 minute wait; a second run removes what is left.
           for attempt in 1 2; do
             if terraform destroy -auto-approve -input=false; then

@@ -24,8 +24,10 @@ terraform {
     }
   }
 
+  # bucket ไม่ได้เขียนไว้ตรงนี้ เพราะต่างกันไปตาม account ตั้งที่ .github/config.env (TF_STATE_BUCKET)
+  # workflow ส่งมาเป็น -backend-config ถ้ารันเองในเครื่อง:
+  #   terraform init -backend-config="bucket=<TF_STATE_BUCKET>"
   backend "s3" {
-    bucket = "prodpai-tfstate-storage"
     key    = "prodpai/terraform.tfstate"
     region = "us-east-1"
   }
