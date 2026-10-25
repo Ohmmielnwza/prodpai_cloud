@@ -7,9 +7,9 @@ resource "aws_security_group" "allow_web" {
   vpc_id      = aws_vpc.main.id
 
   ingress {
-    description = "ssh from anywhere"
-    from_port   = 22
-    to_port     = 22
+    description = "dashboard acess"
+    from_port   = 5000
+    to_port     = 5000
     protocol    = "tcp"
     cidr_blocks = var.cidr_allow_all
   }
@@ -80,4 +80,26 @@ resource "aws_security_group" "falco_sg" {
 
   ingress = []
   egress  = []
+}
+
+# -----
+# acess dashboard
+# -----
+resource "aws_security_group" "dashboard_ec2_sg" {
+  name   = "dashboard-ec2-sg"
+  vpc_id = aws_vpc.main.id
+
+  ingress {
+    from_port       = 5000
+    to_port         = 5000
+    protocol        = "tcp"
+    security_groups = [aws_security_group.lb_sg.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
 }
