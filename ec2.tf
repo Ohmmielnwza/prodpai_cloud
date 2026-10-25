@@ -11,7 +11,7 @@ data "aws_ami" "ubuntu" {
 }
 
 data "aws_ecr_repository" "app_repo" {
-  name = "prodpai_cloud"
+  name = "plodphai-todo-list"
 }
 
 data "aws_ecr_repository" "dashboard_repo" {
@@ -29,16 +29,14 @@ resource "aws_instance" "prodpai_instance" {
   # user_data_base64            = filebase64("${path.module}/scripts/userdata.sh")
   associate_public_ip_address = true
   iam_instance_profile        = "LabInstanceProfile"
-  key_name                    = aws_key_pair.deployer.key_name
+  key_name                    = aws_key_pair.generated_key.key_name
 
   connection {
     type        = "ssh"
     user        = "ubuntu"
-    private_key = tls_private_key.genKey.private_key_pem
+    private_key = tls_private_key.custom_key.private_key_pem
     host        = self.public_ip
   }
-
-  depends_on = [aws_key_pair.deployer]
 
   provisioner "remote-exec" {
     script = "${path.module}/scripts/falco_setup.sh"
@@ -80,7 +78,7 @@ resource "aws_launch_template" "prodpai_web_template" {
   name_prefix   = "${local.name_prefix}-"
   image_id      = aws_ami_from_instance.web_ami.id
   instance_type = var.instance_type
-  key_name      = aws_key_pair.deployer.key_name
+  key_name      = aws_key_pair.generated_key.key_name
   user_data = base64encode(templatefile("${path.module}/scripts/userdata.sh", {
     IMAGE_TAG = var.image_tag
     ECR_URL   = data.aws_ecr_repository.app_repo.repository_url
@@ -105,8 +103,10 @@ resource "aws_launch_template" "prodpai_web_template" {
     )
   }
 
+  # launch_image.yaml สร้าง version ใหม่ของ template นี้ผ่าน AWS CLI ตอนมี image ใหม่บน ECR
+  # ถ้าไม่ ignore ไว้ terraform apply รอบถัดไปจะดึง user_data กลับไปเป็น image_tag ของตอน apply
   lifecycle {
-    ignore_changes = [image_id]
+    ignore_changes = [image_id, user_data]
   }
 
 }
@@ -140,8 +140,10 @@ resource "aws_autoscaling_group" "asg" {
     triggers = ["tag"]
   }
 
+  # desired_capacity เปลี่ยนเองตาม scaling ส่วน tag ถูก launch_image.yaml เขียนทับเพื่อจุด
+  # instance refresh (triggers = ["tag"]) ทั้งคู่จึงต้อง ignore ไม่งั้น apply รอบหน้าจะดึงกลับ
   lifecycle {
-    ignore_changes = [desired_capacity]
+    ignore_changes = [desired_capacity, tag]
   }
 
 }
@@ -165,20 +167,30 @@ resource "null_resource" "terminate_builder" {
 # =======================================================
 resource "aws_instance" "dashboard" {
   ami           = data.aws_ami.ubuntu.id
-  instance_type = "t3.micro"
-  subnet_id     = values(aws_subnet.private_zone)[1].id
+  instance_type = var.dashboard_instance_type
+
+  # ยึด subnet จาก key ของ local.private_subnets ตรงๆ (az2 = us-east-1b)
+  # ไม่ใช้ values()[1] เพราะลำดับของ for_each ไม่ใช่สัญญาที่ Terraform รับประกัน
+  subnet_id = aws_subnet.private_zone["az2"].id
 
   iam_instance_profile   = "LabInstanceProfile"
   vpc_security_group_ids = [aws_security_group.dashboard_ec2_sg.id]
 
   # โหลด Script ของ Ubuntu
   user_data = templatefile("${path.module}/scripts/setup_dashboard.sh", {
-    IMAGE_TAG   = var.image_tag
+    IMAGE_TAG   = var.dashboard_image_tag
     ECR_URL     = data.aws_ecr_repository.dashboard_repo.repository_url
-    S3_BUCKET   = "prod-pai-logs"
+    S3_BUCKET   = var.data_bucket
+    S3_KEY      = var.data_key
     LAMBDA_NAME = aws_lambda_function.infra_aggregator.function_name
     AWS_REGION  = var.aws_region
   })
 
-  tags = { Name = "DevSecOps-Dashboard-Ubuntu" }
+  tags = merge(
+    local.common_tag,
+    {
+      Name = "${local.name_prefix}-dashboard"
+      Role = "dashboard"
+    }
+  )
 }

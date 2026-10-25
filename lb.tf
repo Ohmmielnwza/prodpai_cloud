@@ -57,9 +57,11 @@ resource "aws_lb_target_group" "dashboard_tg" {
   protocol = "HTTP"
   vpc_id   = aws_vpc.main.id
 
-  # ตั้งค่า Health Check ให้ ALB คอยเช็คว่าเว็บไม่ล่ม
+  # ALB ส่ง path มาตามที่ผู้ใช้พิมพ์ (rewrite ไม่ได้) แอป Flask จึง mount ทุก route ไว้ใต้
+  # /dashboard health check จึงต้องยิง /dashboard/health ไม่ใช่ /api/data ที่ไม่มีอยู่จริง
   health_check {
-    path                = "/api/data" # ยิงไปที่ API นี้เพื่อเช็คสถานะ
+    path                = "/dashboard/health"
+    matcher             = "200"
     interval            = 30
     timeout             = 5
     healthy_threshold   = 2

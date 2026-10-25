@@ -22,6 +22,7 @@ docker run -d --name dashboard \
   --restart always \
   -p 5000:5000 \
   -e INFRA_S3_BUCKET="${S3_BUCKET}" \
+  -e INFRA_S3_KEY="${S3_KEY}" \
   -e INFRA_LAMBDA_NAME="${LAMBDA_NAME}" \
   -e AWS_DEFAULT_REGION="${AWS_REGION}" \
   ${ECR_URL}:${IMAGE_TAG}

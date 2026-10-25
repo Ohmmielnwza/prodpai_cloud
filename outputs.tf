@@ -1,58 +1,42 @@
-# output "ssh_command" {
-#   value       = "ssh -i  ubuntu@${aws_instance.test_falco.public_ip}"
-#   description = "Command for SSH into ubuntu"
-# }
-
-# output "public_ip" {
-#   value = aws_instance.web.public_ip
-# }
-
-# output "web_url" {
-#   value = "http://${aws_instance.web.public_dns}"
-# }
-
 # -----
-# Live data for the dashboard
-# อ่านจาก AWS ตอน apply (ไม่ใช่ค่าใน config) เพื่อให้สถานะตรงกับของจริง
+# ค่าที่ workflow และคนใช้งานต้องใช้ต่อ
+#
+# หมายเหตุ: ข้อมูลที่หน้า dashboard แสดง "ไม่ได้" มาจาก output ชุดนี้แล้ว
+# แต่มาจาก Lambda prod-pai-Infra-Aggregator ที่กวาดของจริงจาก AWS API แล้วเขียนลง S3
+# output ที่นี่จึงเหลือเฉพาะ URL และชื่อ resource ที่ launch_image.yaml ต้องอ้างถึง
 # -----
-locals {
-  # แยก data source ตามสถานะ เพราะ aws_instances ไม่บอกสถานะรายเครื่อง
-  instance_states = toset(["pending", "running", "shutting-down", "stopping", "stopped"])
+
+output "app_url" {
+  description = "หน้าเว็บแอป todo-list ผ่าน ALB"
+  value       = "http://${aws_lb.lb.dns_name}/"
 }
 
-# EC2 ที่ ASG สร้างจริง (ไม่ใช่เครื่อง image builder)
-data "aws_instances" "asg" {
-  for_each = local.instance_states
-
-  instance_tags = {
-    "aws:autoscaling:groupName" = aws_autoscaling_group.asg.name
-  }
-  instance_state_names = [each.key]
-
-  depends_on = [aws_autoscaling_group.asg]
+output "dashboard_url" {
+  description = "หน้า dashboard ผ่าน ALB (listener rule /dashboard*)"
+  value       = "http://${aws_lb.lb.dns_name}/dashboard"
 }
 
-# ค่า capacity จริงของ ASG (resource ตั้ง ignore_changes ไว้ ค่าใน state จึงอาจไม่ตรง)
-data "aws_autoscaling_group" "asg" {
-  name = aws_autoscaling_group.asg.name
-
-  depends_on = [aws_autoscaling_group.asg]
-}
-
-# เครื่อง builder ถูก terminate ด้วย AWS CLI ใน null_resource ซึ่ง Terraform ไม่รู้
-# จึงถาม AWS ตรงๆ ว่ายังอยู่ในสถานะไหน ถ้าไม่เจอในสถานะใดเลยแปลว่า terminated แล้ว
-data "aws_instances" "builder" {
-  for_each = local.instance_states
-
-  filter {
-    name   = "instance-id"
-    values = [aws_instance.prodpai_instance.id]
-  }
-  instance_state_names = [each.key]
-
-  depends_on = [null_resource.terminate_builder]
-}
-
+# ชื่อเดิม ใช้ใน workflow/สคริปต์ที่มีอยู่ จึงคงไว้
 output "lb_domain_name_http" {
   value = "http://${aws_lb.lb.dns_name}/"
+}
+
+output "asg_name" {
+  description = "ชื่อ ASG ที่ launch_image.yaml ต้องติด tag เพื่อจุด instance refresh"
+  value       = aws_autoscaling_group.asg.name
+}
+
+output "launch_template_id" {
+  description = "launch template ที่ launch_image.yaml สร้าง version ใหม่ให้"
+  value       = aws_launch_template.prodpai_web_template.id
+}
+
+output "app_ecr_url" {
+  description = "ECR ที่ CI ของ prod-pai-todolist ดัน image ขึ้นมา"
+  value       = data.aws_ecr_repository.app_repo.repository_url
+}
+
+output "dashboard_data_location" {
+  description = "ที่อยู่ของ snapshot ที่ aggregator เขียนและ dashboard อ่าน"
+  value       = "s3://${var.data_bucket}/${var.data_key}"
 }

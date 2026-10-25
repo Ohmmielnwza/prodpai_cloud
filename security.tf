@@ -15,14 +15,6 @@ resource "aws_security_group" "allow_web" {
   }
 
   ingress {
-    description = "dashboard acess"
-    from_port   = 5000
-    to_port     = 5000
-    protocol    = "tcp"
-    cidr_blocks = var.cidr_allow_all
-  }
-
-  ingress {
     description     = "HTTP from ALB"
     from_port       = 80
     to_port         = 80
