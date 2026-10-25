@@ -434,6 +434,12 @@
                 <span id="conn" class="pill" title="Server-Sent Events connection to the dashboard server">
                     <span class="dot" aria-hidden="true"></span><span id="conn-text">Connecting</span>
                 </span>
+                
+                <!-- ปุ่ม Sync AWS ที่เพิ่มเข้ามาใหม่ -->
+                <button id="sync-aws-btn" type="button" class="btn" aria-label="Sync live data from AWS">
+                    <i id="sync-aws-icon" class="ph ph-cloud-arrow-down" aria-hidden="true"></i><span id="sync-aws-text" class="btn-text">Sync AWS</span>
+                </button>
+                
                 <button id="refresh-btn" type="button" class="btn" aria-label="Refresh data">
                     <i id="refresh-icon" class="ph ph-arrows-clockwise" aria-hidden="true"></i><span class="btn-text">Refresh</span>
                 </button>
@@ -600,7 +606,7 @@
             };
         }
 
-        // ---------- loading & live updates (unchanged contract: /api/data + /api/events) ----------
+        // ---------- loading & live updates ----------
         async function load(manual = false) {
             if (state.busy) { state.again = true; return; }
             state.busy = true;
@@ -752,15 +758,26 @@
         function renderBanner() {
             const d = state.data, b = $('banner');
             let tone = '', ico = 'info', title = '', body = '';
-            if (d.source === 'mock') {
+            
+            // เพิ่มระบบดักจับและแจ้งเตือน Compromised Resources ตรงนี้
+            const compromisedNodes = d && d.resources ? d.resources.filter(r => r.status.includes('COMPROMISED')) : [];
+
+            if (compromisedNodes.length > 0) {
+                tone = 'is-err'; 
+                ico = 'warning-octagon'; 
+                title = `CRITICAL ALERT: ${compromisedNodes.length} Resource(s) Compromised!`;
+                body = 'The DevSecOps pipeline has detected compromised resources. They have been isolated. Affected IDs: ' + 
+                       compromisedNodes.map(r => r.id).join(', ');
+            } else if (d.source === 'mock') {
                 tone = 'is-warn'; ico = 'flask'; title = 'Sample data — this is not your infrastructure';
-                body = 'Sample fallback is enabled (INFRA_SAMPLE_FALLBACK=1). ' + d.detail.replace(/\s*SAMPLE DATA:[^.]*\.?\s*$/, '');
+                body = 'Sample fallback is enabled (INFRA_SAMPLE_FALLBACK=1). ' + (d.detail || '').replace(/\s*SAMPLE DATA:[^.]*\.?\s*$/, '');
             } else if (d.source === 'stale') {
                 tone = 'is-warn'; ico = 'clock-counter-clockwise'; title = d.message || 'Showing previous data';
                 body = d.detail;
             } else if (d.source === 'live' && (d.message || d.detail)) {
-                ico = 'info'; title = d.message; body = d.detail;
+                ico = 'info'; title = 'Live Sync Active'; body = 'Infrastructure topology and metrics are up to date.';
             }
+
             b.hidden = !title && !body;
             b.className = `banner ${tone}`;
             $('banner-icon').className = `ph ph-${ico}`;
@@ -773,7 +790,6 @@
             box.replaceChildren();
             const d = state.data;
             const has = d && d.resources.length > 0;
-            // card tone = the top accent line + icon tint; it follows the value's real meaning only
             const card = (label, ico, value, opts = {}) => {
                 const c = el('div', `card tone-${value === null ? 'na' : opts.card || 'neutral'}${opts.primary ? ' is-primary' : ''}`);
                 const head = el('div', 'c-head');
@@ -817,7 +833,6 @@
                 foot: has ? (h.error ? `${h.error} error${h.error > 1 ? 's' : ''}` : 'No errors') : '',
                 footTone: h.error ? 'is-err' : ''
             });
-            // ASG instances: only meaningful when the output actually reports them; otherwise "—", never 0
             const reported = d.keys.has('ec2_instances');
             const members = d.resources.filter(isMember);
             const running = members.filter((r) => r.status === 'running').length;
@@ -925,7 +940,6 @@
             const rx = Math.max(mx + 2 * G.col, mx + Math.max(W, asgW) / 2 + 56 + W / 2);
             const chipsH = (list) => 40 + list.length * 34 + 6;
 
-            // 1. external traffic
             const internet = { r: null, x: mx - 70, y: 0, w: 140, h: 44, external: true };
             L.nodes.push(internet);
             const regionT = internet.h + 40;
@@ -934,7 +948,6 @@
             const nWaf = waf ? reg(add(waf, mx + G.col, wafY)) : null;
             const nIgw = igw ? reg(add(igw, mx, vpcT - H / 2)) : null;
 
-            // 2-3. public subnets: load balancer, NAT, auxiliary builder
             const pubT = vpcT + H / 2 + 24;
             const pubH = Math.max(H + 40, chipsH(pubSn));
             const pubY = pubT + (pubH - H) / 2;
@@ -946,7 +959,6 @@
             const nTg = tg ? reg(add(tg, mx, tgY)) : null;
             const nLt = lt ? reg(add(lt, rx, tgY)) : null;
 
-            // 4. private subnets: ASG with its real instances
             const privT = tgY + H + 36;
             const asgH = 16 + H + 12 + 32;
             const hasCompute = asg || members.length;
@@ -962,11 +974,9 @@
             }
             const privB = privT + privH;
 
-            // 5. security groups row
             const sgT = privB + 28;
             const nSgs = sgs.map((r, i) => reg(add(r, contentL + G.sgW / 2 + i * (G.sgW + G.gap), sgT, G.sgW, { compact: true })));
 
-            // VPC + subnet bands
             const rights = L.nodes.filter((n) => !n.external && n !== nWaf).map((n) => n.x + n.w).concat([asg ? asgBox.x + asgBox.w : 0]);
             const bandR = Math.max(...rights, contentL + W) + 24;
             const vpcB = (sgs.length ? sgT + H : privB) + G.pad;
@@ -982,7 +992,6 @@
             band(privT, privH, 'Private subnets', privSn, 'private');
             if (sgs.length) L.labels.push({ x: bandL + 12, y: sgT + H / 2 - 8, ico: 'lock-key', title: 'Security groups' });
 
-            // 6-7. monitoring / response column (outside the VPC) and anything unplaced
             const mcx = vpcR + 64 + W / 2;
             let my = ec2Y;
             const nLogs = logs ? reg(add(logs, mcx, my)) : null;
@@ -1000,7 +1009,6 @@
             L.labels.push({ x: 12, y: regionT + 12, ico: 'globe-hemisphere-west', title: 'AWS region', value: region });
             L.w = regionR; L.h = regionB;
 
-            // ---------- edges ----------
             const E = (from, fs, to, ts, kind, label, opt = {}) => { if (from && to) L.edges.push({ from, fs, to, ts, kind, label, ...opt }); };
             const chain = [internet, nIgw, nLb, nTg].filter(Boolean);
             for (let i = 1; i < chain.length; i++) E(chain[i - 1], 'b', chain[i], 't', 'traffic');
@@ -1036,7 +1044,6 @@
             const k = Math.min(Math.max(dist * 0.42, 24), 120);
             const n1 = NORMAL[e.fs], n2 = NORMAL[e.ts];
             const c1 = [p1[0] + n1[0] * k, p1[1] + n1[1] * k];
-            // arrow end: pull the curve's last control point out of the target so the arrowhead sits flush
             const c2 = [p2[0] + n2[0] * k, p2[1] + n2[1] * k];
             const mid = [0, 1].map((j) => 0.125 * p1[j] + 0.375 * c1[j] + 0.375 * c2[j] + 0.125 * p2[j]);
             return { d: `M ${p1[0]} ${p1[1]} C ${c1[0]} ${c1[1]}, ${c2[0]} ${c2[1]}, ${p2[0]} ${p2[1]}`, mid };
@@ -1048,7 +1055,6 @@
         const SVGNS = 'http://www.w3.org/2000/svg';
         const svgEl = (tag, attrs) => { const n = document.createElementNS(SVGNS, tag); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); return n; };
 
-        // node anatomy: kicker (service) / name / one line of real metadata
         function nodeLabel(n) {
             const r = n.r;
             if (isMember(r)) return { kicker: 'EC2 instance', name: r.id, sub: [statusWord(r), r.ips[0]].filter(Boolean).join(' · ') };
@@ -1148,7 +1154,6 @@
             Object.assign(b.style, { left: `${n.x}px`, top: `${n.y}px`, width: `${n.w}px`, height: `${n.h}px` });
             b.dataset.key = r.key;
             if (n.strip) {
-                // the ASG is drawn as the group around its instances; its handle sits on the group's bottom edge
                 b.classList.add('node-strip');
                 b.append(icon('stack'), el('span', 'node-name', r.name));
                 b.append(el('span', 'node-sub', r.spec));
@@ -1187,7 +1192,6 @@
             view.s = Math.min(Math.max(Math.min(pw / layout.w, ph / layout.h, 1.1), 0.2), 2);
             view.x = (vp.clientWidth - layout.w * view.s) / 2;
             view.y = Math.max((vp.clientHeight - 36 - layout.h * view.s) / 2, 16);
-            // on phones a whole-diagram fit is unreadable: keep a legible scale and start at the traffic entry point
             if (vp.clientWidth < 640 && view.s < 0.5) {
                 const entry = layout.nodes[0];
                 view.s = 0.5;
@@ -1308,7 +1312,7 @@
                     ta.remove();
                 }
                 b.classList.toggle('is-done', ok);
-                b.replaceChildren(icon(ok ? 'check' : 'x'));
+                b.replaceChildren(icon('check'));
                 $('live').textContent = ok ? `${label} copied to clipboard.` : `Could not copy ${label}.`;
                 setTimeout(() => { b.classList.remove('is-done'); b.replaceChildren(icon('copy')); }, 1400);
             });
@@ -1342,7 +1346,6 @@
                 return;
             }
 
-            // identity
             const head = el('div', 'd-head');
             const ic = el('span', `node-ico ${svcClass(r)}`);
             ic.append(icon(isBuilder(r) ? 'wrench' : typeIcon(r.type)));
@@ -1357,14 +1360,13 @@
             head.append(ic, id, close);
             box.append(head);
 
-            // health & verification
             const st = el('div', `d-status h-${r.health}`);
             const stText = el('div');
             const title = el('p');
             title.append(el('b', null, r.status), document.createTextNode(` · ${HEALTH_LABEL[r.health]}`));
             stText.append(title, el('p', null, r.assumed
                 ? 'Not reported by Terraform or AWS. Shown as the expected default and not counted as healthy.'
-                : 'Reported in the Terraform output.'));
+                : 'Reported by live infrastructure sync.'));
             st.append(statusDot(r), stText);
             box.append(st);
 
@@ -1485,6 +1487,37 @@
         }
 
         // ---------- interactions ----------
+
+        // ฟังก์ชันใหม่สำหรับจัดการปุ่ม Sync AWS
+        async function forceRefreshAWS() {
+            const btn = $('sync-aws-btn');
+            const icon = $('sync-aws-icon');
+            const text = $('sync-aws-text');
+
+            btn.disabled = true;
+            icon.classList.remove('ph-cloud-arrow-down');
+            icon.classList.add('ph-arrows-clockwise', 'spin');
+            text.textContent = "Syncing...";
+
+            try {
+                const response = await fetch('/api/force-refresh', { method: 'POST' });
+                const result = await response.json();
+
+                if (!response.ok) {
+                    alert("AWS Sync Error: " + result.message);
+                }
+            } catch (err) {
+                alert("Failed to connect to the server to sync AWS data.");
+            } finally {
+                btn.disabled = false;
+                icon.classList.remove('ph-arrows-clockwise', 'spin');
+                icon.classList.add('ph-cloud-arrow-down');
+                text.textContent = "Sync AWS";
+            }
+        }
+        
+        $('sync-aws-btn').addEventListener('click', forceRefreshAWS);
+
         $('refresh-btn').addEventListener('click', () => load(true));
         $('retry-btn').addEventListener('click', () => load(true));
         $('q').addEventListener('input', (ev) => { state.query = ev.target.value; if (state.data) renderTable(); });
