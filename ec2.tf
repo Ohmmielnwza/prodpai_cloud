@@ -161,7 +161,7 @@ resource "null_resource" "terminate_builder" {
 }
 
 resource "aws_s3_object" "app_code" {
-  bucket = aws_s3_bucket.dashboard_data.bucket
+  bucket = data.aws_s3_bucket.dashboard_data.bucket
   key    = "app/dashboard_code.zip"
   source = data.archive_file.aggregator_zip.output_path
   etag   = filemd5(data.archive_file.aggregator_zip.output_path)
@@ -182,7 +182,7 @@ resource "aws_instance" "dashboard" {
   user_data = templatefile("${path.module}/scripts/setup_dashboard.sh", {
     IMAGE_TAG   = var.image_tag
     ECR_URL     = data.aws_ecr_repository.dashboard_repo.repository_url
-    S3_BUCKET   = aws_s3_bucket.dashboard_data.bucket
+    S3_BUCKET   = data.aws_s3_bucket.dashboard_data.bucket
     LAMBDA_NAME = aws_lambda_function.infra_aggregator.function_name
     AWS_REGION  = var.aws_region
   })

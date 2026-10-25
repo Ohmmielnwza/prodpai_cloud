@@ -105,7 +105,7 @@ resource "aws_lambda_function" "infra_aggregator" {
 
   environment {
     variables = {
-      S3_BUCKET = aws_s3_bucket.dashboard_data.bucket
+      S3_BUCKET = data.aws_s3_bucket.dashboard_data.bucket
       S3_KEY    = "dashboard/current_infra.json"
     }
   }
