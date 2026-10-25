@@ -175,7 +175,7 @@ resource "aws_instance" "dashboard" {
   user_data = templatefile("${path.module}/scripts/setup_dashboard.sh", {
     IMAGE_TAG   = var.image_tag
     ECR_URL     = data.aws_ecr_repository.dashboard_repo.repository_url
-    S3_BUCKET   = data.aws_s3_bucket.dashboard_data.bucket
+    S3_BUCKET   = "prod-pai-logs"
     LAMBDA_NAME = aws_lambda_function.infra_aggregator.function_name
     AWS_REGION  = var.aws_region
   })

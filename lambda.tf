@@ -105,7 +105,7 @@ resource "aws_lambda_function" "infra_aggregator" {
 
   environment {
     variables = {
-      S3_KEY = "dashboard/current_infra.json"
+      S3_BUCKET = "prod-pai-logs"
     }
   }
 }
