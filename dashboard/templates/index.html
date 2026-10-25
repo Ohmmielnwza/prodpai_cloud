@@ -614,7 +614,7 @@
             $('refresh-btn').disabled = true;
             try {
                 const headers = state.version && !manual ? { 'If-None-Match': state.version } : {};
-                const res = await fetch('/api/data', { headers, cache: 'no-store' });
+                const res = await fetch('/dashboard/api/data', { headers, cache: 'no-store' });
                 if (res.status !== 304) {
                     if (!res.ok) throw new Error(`The server responded with status ${res.status}.`);
                     const data = sanitize(await res.json());
@@ -656,7 +656,7 @@
                 setInterval(() => load(false), 5000);
                 return;
             }
-            const source = new EventSource('/api/events');
+            const source = new EventSource('/dashboard/api/events');
             source.onopen = () => { setConnection('live'); load(false); };
             source.addEventListener('change', () => load(false));
             source.onerror = () => setConnection('down');
@@ -1500,7 +1500,7 @@
             text.textContent = "Syncing...";
 
             try {
-                const response = await fetch('/api/force-refresh', { method: 'POST' });
+                const response = await fetch('/dashboard/api/force-refresh', { method: 'POST' });
                 const result = await response.json();
 
                 if (!response.ok) {

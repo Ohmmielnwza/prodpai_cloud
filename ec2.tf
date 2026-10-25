@@ -155,3 +155,26 @@ resource "null_resource" "terminate_builder" {
     command     = "aws ec2 terminate-instances --instance-ids ${aws_instance.prodpai_instance.id} --region us-east-1"
   }
 }
+
+# =======================================================
+# 3. สร้าง EC2 Instance (Ubuntu) ใน Private Subnet
+# =======================================================
+resource "aws_instance" "dashboard" {
+  ami           = data.aws_ami.ubuntu.id
+  instance_type = "t3.micro"
+  subnet_id     = values(aws_subnet.private_zone)[1].id
+
+  iam_instance_profile   = "LabInstanceProfile"
+  vpc_security_group_ids = [aws_security_group.dashboard_ec2_sg.id]
+
+  # โหลด Script ของ Ubuntu
+  user_data = templatefile("${path.module}/scripts/setup_app.sh", {
+    app_py_b64     = base64encode(file("${path.module}/app/dashboard.py"))
+    index_html_b64 = base64encode(file("${path.module}/app/templates/index.html"))
+    s3_bucket      = aws_s3_bucket.dashboard_data.bucket
+    lambda_name    = aws_lambda_function.infra_aggregator.function_name
+    region         = var.aws_region
+  })
+
+  tags = { Name = "DevSecOps-Dashboard-Ubuntu" }
+}

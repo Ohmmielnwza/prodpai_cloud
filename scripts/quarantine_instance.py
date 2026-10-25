@@ -108,6 +108,14 @@ def lambda_handler(event, context):
                         Groups=[ISOLATED_SG_ID]
                     )
                     print(f"✅ [SUCCESS] Instance {instance_id} has been successfully air-gapped.")
+                    ec2.create_tags(
+                        Resources=[instance_id],
+                        Tags=[
+                            {'Key': 'SecurityStatus', 'Value': 'Compromised'}
+                        ]
+                    )
+                    
+                    print(f"Isolated and tagged instance {instance_id}")
                 else:
                     print(f"⚠️ [WARNING] Hostname '{hostname}' is not a valid AWS Instance ID.")
             else:

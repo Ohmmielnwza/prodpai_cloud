@@ -32,7 +32,7 @@ def fetch_s3_data():
         app.logger.error(f"S3 Fetch Error: {e}")
         return None, "error"
 
-@app.route('/api/data', methods=['GET'])
+@app.route('/dashboard/api/data', methods=['GET'])
 def get_data():
     data, etag = fetch_s3_data()
     if not data:
@@ -54,7 +54,7 @@ def get_data():
         "resources": data.get("resources", [])
     })
 
-@app.route('/api/force-refresh', methods=['POST'])
+@app.route('/dashboard/api/force-refresh', methods=['POST'])
 def force_refresh():
     try:
         lam = boto3.client('lambda', region_name=AWS_REGION)
@@ -65,7 +65,7 @@ def force_refresh():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/api/events', methods=['GET'])
+@app.route('/dashboard/api/events', methods=['GET'])
 def events():
     def stream():
         last_etag = cache['etag']
@@ -79,7 +79,8 @@ def events():
     
     return Response(stream(), mimetype="text/event-stream")
 
-@app.route('/')
+@app.route('/dashboard')
+@app.route('/dashboard/')
 def dashboard():
     return render_template('index.html')
 
