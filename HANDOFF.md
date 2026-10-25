@@ -12,7 +12,7 @@
 | ของ | คำสั่ง | ถ้าไม่มีจะเจอ |
 |---|---|---|
 | S3 bucket เก็บ tfstate | `aws s3 mb s3://prodpai-tfstate-<ชื่อตัวเอง> --region us-east-1` | `Backend initialization required` |
-| S3 bucket เก็บข้อมูล dashboard | `aws s3 mb s3://prod-pai-logs --region us-east-1` | `data.aws_s3_bucket.dashboard_data` หา bucket ไม่เจอ (workflow สร้างให้เองถ้ารันผ่าน Actions) |
+| S3 bucket เก็บข้อมูล dashboard | `aws s3 mb s3://<DATA_BUCKET> --region us-east-1` | `data.aws_s3_bucket.dashboard_data` หา bucket ไม่เจอ (workflow สร้างให้เองถ้ารันผ่าน Actions) |
 | ECR repo ของแอป | `aws ecr create-repository --repository-name plodphai-todo-list --region us-east-1` | `couldn't find resource` ที่ `data.aws_ecr_repository.app_repo` |
 | ECR repo ของ dashboard | `aws ecr create-repository --repository-name prodpai_dashboard --region us-east-1` | `couldn't find resource` ที่ `data.aws_ecr_repository.dashboard_repo` |
 
@@ -26,14 +26,12 @@
 
 | ไฟล์ | ค่าเดิม | แก้เป็น | จำเป็นแค่ไหน |
 |---|---|---|---|
-| `terraform.tf` backend | `bucket = "prodpai-tfstate-storage"` | bucket ของตัวเองจากข้อ 1 | **ต้องแก้** — workflow ไม่ส่ง `-backend-config` ให้ ไม่แก้แล้วมันจะไปเขียน state ใน account เจ้าของเดิม (403) |
-| `ec2.tf` `app_repo` | `name = "plodphai-todo-list"` | ชื่อ ECR repo จากข้อ 1 | แก้เมื่อสร้าง ECR ด้วยชื่ออื่น |
-| `.github/workflows/infra_setup.yaml` + `launch_image.yaml` | `ECR_REPOSITORY: plodphai-todo-list` | ชื่อเดียวกับใน `ec2.tf` | แก้คู่กันเสมอ ไม่ตรงกันจะไปเช็ค image ผิด repo |
-| `variables.tf` `data_bucket` | `default = "prod-pai-logs"` | bucket จากข้อ 1 ถ้าใช้ชื่ออื่น | แก้คู่กับ `infra_setup.yaml` ที่ hardcode ชื่อไว้ในขั้นสร้าง bucket |
+| **`.github/config.env`** | `TF_STATE_BUCKET`, `DATA_BUCKET`, `APP_ECR_REPOSITORY`, `DASHBOARD_ECR_REPOSITORY` | ชื่อของ account ตัวเองจากข้อ 1 | **ต้องแก้ที่นี่ที่เดียว** — workflow ทุกตัวอ่านไฟล์นี้แล้วส่งต่อให้ Terraform (`-backend-config` + `TF_VAR_*`) ไม่มีที่อื่น hardcode ชื่อพวกนี้แล้ว ชื่อ S3 ซ้ำข้าม account ไม่ได้ ต้องตั้งใหม่เสมอ |
 | `locals.tf` | `Owner = "nuntawatrdd"` | ชื่อตัวเอง | ไม่จำเป็น เป็นแค่ tag |
 | `variables.tf` | `project_name = "prod-pai"`, `environment = "env"` | ตามใจ | ไม่จำเป็น แต่แก้แล้วชื่อ resource เปลี่ยนหมด รวมชื่อ ASG ที่ `launch_image.yaml` ค้นหาด้วย prefix `prod-pai-env-asg` |
 
 แถวแรกคือที่ต้องแก้จริงๆ ที่เหลือเปิดดูแล้วผ่านได้
+รัน Terraform เองในเครื่อง: `terraform init -backend-config="bucket=<TF_STATE_BUCKET>"` และส่ง `-var` 3 ตัว (`data_bucket`, `app_ecr_repository`, `dashboard_ecr_repository`) ให้ตรงกับไฟล์นี้
 
 ---
 
@@ -41,7 +39,7 @@
 
 | ไฟล์ | ค่าเดิม | แก้เป็น |
 |---|---|---|
-| `.github/config.env` | `ECR_REPOSITORY=plodphai-todo-list` | ชื่อเดียวกับใน `ec2.tf` |
+| `.github/config.env` | `ECR_REPOSITORY=plodphai-todo-list` | ชื่อเดียวกับ `APP_ECR_REPOSITORY` ใน `.github/config.env` ของ `prodpai_cloud` |
 | `.github/workflows/ci.yml` | `AWS_REGION: us-east-1` | แก้เฉพาะถ้าย้าย region (ดูข้อ 5) |
 
 ไฟล์แอปจริงๆ (`index.html`, `js/`, `css/`, `Dockerfile`, `nginx.conf`, `tests/`) ไม่ต้องแก้เลย
@@ -106,7 +104,7 @@ AWS Academy ให้ `us-east-1` อยู่แล้ว
 | Lambda | สิทธิ์ |
 |---|---|
 | `quarantine_taken_instance` | `ec2:DescribeInstances`, `ec2:ModifyInstanceAttribute`, `ec2:CreateSnapshot`, `ec2:CreateTags`, `autoscaling:DetachInstances`, `s3:PutObject` |
-| `prod-pai-Infra-Aggregator` (ถูกเรียกจาก schedule, EventBridge และ Lambda quarantine) | `ec2:Describe*`, `elasticloadbalancing:Describe*`, `autoscaling:Describe*`, `wafv2:List*`/`wafv2:Get*`, `cloudwatch:GetMetricStatistics`, `s3:PutObject`/`GetObject`/`ListBucket`, และ `ce:GetCostAndUsage`/`ce:GetCostForecast` ถ้าอยากได้ค่าใช้จ่ายของจริง |
+| `prod-pai-Infra-Aggregator` (ถูกเรียกจากปุ่ม Sync AWS เท่านั้น) | `ec2:Describe*`, `elasticloadbalancing:Describe*`, `autoscaling:Describe*`, `wafv2:List*`/`wafv2:Get*`, `cloudwatch:GetMetricStatistics`, `s3:PutObject`/`GetObject`/`ListBucket`, และ `ce:GetCostAndUsage`/`ce:GetCostForecast` ถ้าอยากได้ค่าใช้จ่ายของจริง |
 
 เครื่องใน ASG (`LabInstanceProfile`) ต้องมี `ssm:GetParameter` ด้วย เพราะ user data
 อ่าน image tag จาก SSM ตอนบูต ถ้าอ่านไม่ได้สคริปต์จะจบด้วย error แล้วปล่อยให้ ELB health check

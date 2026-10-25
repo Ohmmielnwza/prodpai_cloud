@@ -49,16 +49,14 @@ Internet ──▶ WAF ──▶ ALB :80 ─┬─ "/"           ──▶ TG :8
 
 Lambda prod-pai-Infra-Aggregator ──▶ กวาด AWS API ──▶ s3://prod-pai-logs/dashboard/current_infra.json
       ▲                                                                  ▲
-      ├─ EventBridge: ASG สลับเครื่อง / instance refresh ขยับ / EC2 เปลี่ยนสถานะ
-      ├─ Lambda quarantine สะกิดตอนกักเครื่อง (การติด tag ไม่มี event ของตัวเอง)
-      ├─ schedule ทุก 2 นาที (ตัวกันพลาด เผื่อ event หล่น)
-      └─ ปุ่ม Sync AWS บนหน้าเว็บ
+      └─ ปุ่ม Sync AWS บนหน้าเว็บเท่านั้น (ไม่มี schedule / EventBridge ข้อมูลขยับเมื่อกด)
                               dashboard EC2 อ่านผ่าน S3 Gateway Endpoint ─┘  (ไม่ออกอินเทอร์เน็ต)
 
-Falco บนทุกเครื่อง ── Critical ──▶ CloudWatch /falco/alerts ──▶ Lambda quarantine
+Falco บนทุกเครื่อง ── Emergency/Alert/Critical ──▶ CloudWatch /falco/alerts ──▶ Lambda quarantine
                                      ├─ detach ออกจาก ASG (ASG ปั้นเครื่องใหม่แทน เครื่องเดิมไม่ถูกลบ)
                                      ├─ snapshot EBS ทุกก้อน + DeleteOnTermination=false
                                      ├─ ย้ายเข้า SG air-gap
+                                     ├─ NACL deny IP/32 ทั้งขาเข้า-ขาออก (ตัด connection ที่เปิดค้าง)
                                      └─ ติด tag SecurityStatus=Compromised + เขียน incident ลง S3
 ```
 
@@ -161,7 +159,7 @@ curl -s "$(terraform output -raw dashboard_url)/health" # ต้องได้ 
 | EC2 → Target Groups → `prod-pai-env-lb-target` | 2 เครื่อง `healthy` (ช่วงแรก `initial` 1–2 นาทีปกติ) |
 | EC2 → Target Groups → `dashboard-tg-5000` | 1 เครื่อง `healthy` (health check = `/dashboard/health`) |
 | EC2 → Instances | `prod-pai-env-instance` 2 เครื่อง + `prod-pai-env-dashboard` 1 เครื่อง |
-| S3 → `prod-pai-logs/dashboard/current_infra.json` | มีไฟล์ และ `update_time` ขยับทุก ~2 นาที |
+| S3 → `prod-pai-logs/dashboard/current_infra.json` | กด Sync AWS บนหน้า dashboard ก่อน แล้วจะมีไฟล์ และ `update_time` ขยับทุกครั้งที่กด |
 | เบราว์เซอร์ | `http://<alb>/` เห็นแอป · `http://<alb>/dashboard` เห็นแผนผัง |
 
 > builder (`prod-pai-env-image-builder`) ถูก terminate อัตโนมัติท้าย apply เห็นเป็น `terminated` ปกติ
