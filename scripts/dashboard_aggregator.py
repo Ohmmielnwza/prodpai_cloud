@@ -726,6 +726,12 @@ def build_health_summary(tgs, instances):
 # Handler
 # ==========================================
 def lambda_handler(event, context):
+    # ถูกเรียกได้จากหลายทาง: schedule ทุก 2 นาที, EventBridge ตอน ASG สลับเครื่องหรือ
+    # instance refresh ขยับ, Lambda quarantine ตอนกักเครื่อง, และปุ่ม Sync บนหน้าเว็บ
+    # log ไว้ว่ารอบนี้มาจากไหน เวลาไล่ปัญหาจะรู้ว่า event ทำงานจริงหรือหล่น
+    trigger = (event or {}).get('detail-type') or (event or {}).get('source') or 'manual/schedule'
+    print(f"triggered by: {trigger}")
+
     net = collect_network()
     asgs, asg_members = collect_asg()
     instances, _ = collect_instances(asg_members)

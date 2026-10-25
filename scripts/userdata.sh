@@ -15,7 +15,22 @@ systemctl restart falcosidekick || true
 
 ECR_REGISTRY=$(echo "${ECR_URL}" | cut -d'/' -f1)
 
-aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR_REGISTRY
+aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin $ECR_REGISTRY
 
-docker pull ${ECR_URL}:${IMAGE_TAG}
-docker run -d --restart always -p 80:8080 ${ECR_URL}:${IMAGE_TAG}
+# เวอร์ชันที่ต้องรันอ่านจาก SSM Parameter Store ตอนบูต ไม่ได้ฝังมากับ launch template
+#
+# เหตุผล: การ deploy เวอร์ชันใหม่จึงเป็นแค่การเปลี่ยนค่าใน SSM แล้วสั่ง instance refresh
+# ไม่ต้องสร้าง launch template version ใหม่ทุกครั้ง และฝั่ง CD ไม่ต้องมีสิทธิ์แก้ launch template
+IMAGE_TAG=$(aws ssm get-parameter --name "${IMAGE_TAG_PARAM}" --region ${AWS_REGION} \
+  --query 'Parameter.Value' --output text 2>/dev/null)
+
+# อ่าน SSM ไม่ได้ (พารามิเตอร์หาย หรือสิทธิ์ไม่พอ) อย่าปล่อยให้เครื่องขึ้นมาแบบไม่มีแอป
+# ปล่อยให้ ELB health check จับว่า unhealthy แล้ว ASG เปลี่ยนเครื่องให้ ดีกว่ารันเวอร์ชันผิด
+if [ -z "$IMAGE_TAG" ] || [ "$IMAGE_TAG" = "None" ]; then
+  echo "cannot read image tag from SSM parameter ${IMAGE_TAG_PARAM}" >&2
+  exit 1
+fi
+
+echo "starting ${ECR_URL}:$IMAGE_TAG"
+docker pull ${ECR_URL}:$IMAGE_TAG
+docker run -d --restart always -p 80:8080 ${ECR_URL}:$IMAGE_TAG

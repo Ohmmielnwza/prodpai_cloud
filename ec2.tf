@@ -79,9 +79,12 @@ resource "aws_launch_template" "prodpai_web_template" {
   image_id      = aws_ami_from_instance.web_ami.id
   instance_type = var.instance_type
   key_name      = aws_key_pair.generated_key.key_name
+  # user data ไม่มี image tag อยู่ในตัวแล้ว เครื่องไปอ่านจาก SSM ตอนบูตเอง
+  # template นี้จึงนิ่ง ไม่ต้องสร้าง version ใหม่ทุกครั้งที่ปล่อยเวอร์ชัน
   user_data = base64encode(templatefile("${path.module}/scripts/userdata.sh", {
-    IMAGE_TAG = var.image_tag
-    ECR_URL   = data.aws_ecr_repository.app_repo.repository_url
+    IMAGE_TAG_PARAM = aws_ssm_parameter.app_image_tag.name
+    ECR_URL         = data.aws_ecr_repository.app_repo.repository_url
+    AWS_REGION      = var.aws_region
   }))
 
   iam_instance_profile {
@@ -103,10 +106,10 @@ resource "aws_launch_template" "prodpai_web_template" {
     )
   }
 
-  # launch_image.yaml สร้าง version ใหม่ของ template นี้ผ่าน AWS CLI ตอนมี image ใหม่บน ECR
-  # ถ้าไม่ ignore ไว้ terraform apply รอบถัดไปจะดึง user_data กลับไปเป็น image_tag ของตอน apply
+  # ignore image_id เพราะ AMI ถูกสร้างจากเครื่อง builder ที่ถูก terminate ไปแล้ว
+  # ส่วน user_data ไม่ต้อง ignore อีกเพราะไม่มีใครแก้จากข้างนอกแล้ว (tag ย้ายไปอยู่ SSM)
   lifecycle {
-    ignore_changes = [image_id, user_data]
+    ignore_changes = [image_id]
   }
 
 }
@@ -131,19 +134,19 @@ resource "aws_autoscaling_group" "asg" {
     version = "$Latest"
   }
 
+  # ค่านี้ใช้ตอน Terraform เป็นคนทำให้เกิด refresh เอง (เช่น launch template เปลี่ยน)
+  # ส่วนการปล่อยเวอร์ชันใหม่ ฝั่ง CD เรียก start-instance-refresh พร้อม preferences ของตัวเอง
   instance_refresh {
     strategy = "Rolling"
     preferences {
       min_healthy_percentage = 50
       instance_warmup        = 180
     }
-    triggers = ["tag"]
   }
 
-  # desired_capacity เปลี่ยนเองตาม scaling ส่วน tag ถูก launch_image.yaml เขียนทับเพื่อจุด
-  # instance refresh (triggers = ["tag"]) ทั้งคู่จึงต้อง ignore ไม่งั้น apply รอบหน้าจะดึงกลับ
+  # desired_capacity เปลี่ยนเองตาม scaling policy ไม่ใช่ค่าที่เราคุม
   lifecycle {
-    ignore_changes = [desired_capacity, tag]
+    ignore_changes = [desired_capacity]
   }
 
 }

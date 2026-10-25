@@ -62,8 +62,9 @@ Settings → Secrets and variables → Actions ของแต่ละ repo
   มันอ่านจาก S3 ที่ Lambda เขียนไว้ ไม่มี endpoint ให้ยิงข้อมูลเข้า
 - คีย์ AWS Academy หมดอายุทุก ~4 ชม. หมดแล้วต้องวางใหม่ทั้ง 3 ตัว ในทั้งสอง repo และใน `~/.aws/credentials`
 - **credentials ของ repo แอปต้องการมากกว่าแค่ push ECR แล้ว** เพราะ CI ทำ rollout เองหลัง push
-  ต้องมี `ec2:DescribeLaunchTemplateVersions`, `ec2:CreateLaunchTemplateVersion`, `ec2:ModifyLaunchTemplate`,
-  `autoscaling:DescribeAutoScalingGroups`, `autoscaling:DescribeInstanceRefreshes`, `autoscaling:CreateOrUpdateTags`
+  แต่ต้องการแค่ 4 อย่าง ไม่ต้องมีสิทธิ์แก้ launch template แล้ว:
+  `ssm:PutParameter` (เฉพาะ `/prod-pai/app/image_tag`), `autoscaling:DescribeAutoScalingGroups`,
+  `autoscaling:DescribeInstanceRefreshes`, `autoscaling:StartInstanceRefresh`
   ใน AWS Academy ใช้คีย์ชุดเดียวกันอยู่แล้วจึงผ่าน แต่ถ้าส่งต่อให้คนนอกจริงๆ นี่คือการให้สิทธิ์แตะของที่รันอยู่
   ถ้าไม่อยากให้ ให้ลบ job `rollout` ออกจาก `ci.yml` แล้วกลับไปกด **Launch Image** เองที่ repo นี้แทน
 
@@ -79,7 +80,7 @@ Settings → Secrets and variables → Actions ของแต่ละ repo
 | `terraform.tf` | region ของ S3 backend |
 | `variables.tf` | `default` ของ `aws_region` |
 | `ec2.tf` | `--region us-east-1` ในคำสั่ง terminate builder |
-| `scripts/userdata.sh` | `aws ecr get-login-password --region us-east-1` |
+| `scripts/userdata.sh` | รับ region ผ่าน templatefile แล้ว ไม่มี hardcode เหลือ (ไม่ต้องแก้) |
 | `scripts/falco_setup.sh` | region ของ falcosidekick และ systemd environment |
 | `.github/workflows/*.yaml` / `destroy.yml` | `AWS_REGION` |
 | `scripts/dashboard_aggregator.py` | client ของ Cost Explorer ตรึงไว้ที่ `us-east-1` (ถูกแล้ว — CE มีที่นั่นที่เดียว) |
@@ -105,7 +106,11 @@ AWS Academy ให้ `us-east-1` อยู่แล้ว
 | Lambda | สิทธิ์ |
 |---|---|
 | `quarantine_taken_instance` | `ec2:DescribeInstances`, `ec2:ModifyInstanceAttribute`, `ec2:CreateSnapshot`, `ec2:CreateTags`, `autoscaling:DetachInstances`, `s3:PutObject` |
-| `prod-pai-Infra-Aggregator` | `ec2:Describe*`, `elasticloadbalancing:Describe*`, `autoscaling:Describe*`, `wafv2:List*`/`wafv2:Get*`, `cloudwatch:GetMetricStatistics`, `s3:PutObject`/`GetObject`/`ListBucket`, และ `ce:GetCostAndUsage`/`ce:GetCostForecast` ถ้าอยากได้ค่าใช้จ่ายของจริง |
+| `prod-pai-Infra-Aggregator` (ถูกเรียกจาก schedule, EventBridge และ Lambda quarantine) | `ec2:Describe*`, `elasticloadbalancing:Describe*`, `autoscaling:Describe*`, `wafv2:List*`/`wafv2:Get*`, `cloudwatch:GetMetricStatistics`, `s3:PutObject`/`GetObject`/`ListBucket`, และ `ce:GetCostAndUsage`/`ce:GetCostForecast` ถ้าอยากได้ค่าใช้จ่ายของจริง |
+
+เครื่องใน ASG (`LabInstanceProfile`) ต้องมี `ssm:GetParameter` ด้วย เพราะ user data
+อ่าน image tag จาก SSM ตอนบูต ถ้าอ่านไม่ได้สคริปต์จะจบด้วย error แล้วปล่อยให้ ELB health check
+จับว่า unhealthy ซึ่งดีกว่าปล่อยเครื่องเปล่าขึ้นมารับงาน
 
 ไม่มี `ce:*` ก็ยังใช้ได้ หน้าเว็บจะตกไปใช้ตัวเลขประเมินแทนแล้วบอกไว้ว่าเป็นค่าประเมิน
 

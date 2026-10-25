@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 ec2 = boto3.client('ec2')
 asg = boto3.client('autoscaling')  # เพิ่ม Client สำหรับ Auto Scaling
 s3 = boto3.client('s3')
+lam = boto3.client('lambda')
 
 # Take Security Group' ID ( quarantine_security)
 ISOLATED_SG_ID = os.environ.get('ISOLATED_SG_ID')
@@ -16,6 +17,9 @@ ISOLATED_SG_ID = os.environ.get('ISOLATED_SG_ID')
 # ที่เก็บบันทึกเหตุการณ์ ให้ dashboard เอาไปแสดง timeline ได้
 DATA_BUCKET = os.environ.get('DATA_BUCKET')
 INCIDENT_PREFIX = os.environ.get('INCIDENT_PREFIX', 'dashboard/incidents/')
+
+# Lambda ที่กวาดข้อมูลให้หน้า dashboard
+AGGREGATOR_NAME = os.environ.get('AGGREGATOR_NAME')
 
 
 def already_quarantined(instance_data):
@@ -119,6 +123,23 @@ def record_incident(record):
         print(f"⚠️ [WARNING] เขียนบันทึกเหตุการณ์ลง S3 ไม่สำเร็จ: {err}")
 
 
+def refresh_dashboard():
+    """
+    สะกิด aggregator ให้กวาดข้อมูลใหม่ทันที
+
+    การเปลี่ยน security group กับการติด tag ไม่ทำให้เกิด EventBridge event
+    ถ้าไม่เรียกตรงนี้ กรอบแดงบนหน้า dashboard จะขึ้นช้าถึง 2 นาที
+    ยิงแบบ Event (ไม่รอผล) เพราะงานหลักคือกักเครื่อง ไม่ใช่รีเฟรชหน้าเว็บ
+    """
+    if not AGGREGATOR_NAME:
+        return
+    try:
+        lam.invoke(FunctionName=AGGREGATOR_NAME, InvocationType='Event')
+        print(f"🔄 สะกิด {AGGREGATOR_NAME} ให้อัปเดตหน้า dashboard แล้ว")
+    except Exception as err:
+        print(f"⚠️ [WARNING] เรียก aggregator ไม่สำเร็จ: {err}")
+
+
 def lambda_handler(event, context):
     # 1. ถอดรหัสและขยายไฟล์ Log ที่ CloudWatch บีบอัดส่งมาให้
     cw_data = event['awslogs']['data']
@@ -218,6 +239,8 @@ def lambda_handler(event, context):
                 'snapshots': snapshot_ids,
                 'isolated_sg': ISOLATED_SG_ID
             })
+
+            refresh_dashboard()
 
         except Exception as e:
             print(f"❌ [ERROR] Failed to process log event: {e}")

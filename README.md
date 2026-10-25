@@ -16,7 +16,7 @@ Terraform + GitHub Actions สำหรับวาง topology ทั้งช�
 ```
 repo แอป ── CI: test → Semgrep/Trivy/Gitleaks/hadolint → build → smoke → scan image → SBOM
                  └─ push ──▶ ECR (tag: commit SHA + latest)
-                 └─ rollout: launch template version ใหม่ → ติด tag ที่ ASG → ทยอยเปลี่ยนเครื่อง
+                 └─ rollout: ssm put-parameter → start-instance-refresh → ทยอยสลับเครื่อง
                     (เฉพาะ main เท่านั้น)
 ```
 
@@ -32,8 +32,8 @@ Actions → Infra Setup (กดเอง ครั้งแรกครั้ง
    └─ terraform apply → VPC / ALB / ASG / Lambda / dashboard EC2
 
 Actions → Launch Image (กดเอง เมื่อต้องการย้อน tag เก่าหรือปล่อย tag ที่เลือกเอง)
-   ├─ create-launch-template-version (เปลี่ยนเฉพาะ IMAGE_TAG ใน user data)
-   └─ ติด tag ที่ ASG → instance_refresh แบบ Rolling ทยอยเปลี่ยนเครื่องเอง
+   ├─ aws ssm put-parameter  /prod-pai/app/image_tag = <tag>
+   └─ aws autoscaling start-instance-refresh → ทยอยสลับเครื่องแบบ Rolling
 ```
 
 > ปกติไม่ต้องกด Launch Image แล้ว เพราะ CI ฝั่งแอปทำขั้นนี้ให้เองหลัง push ขึ้น ECR
@@ -44,8 +44,15 @@ Internet ──▶ WAF ──▶ ALB :80 ─┬─ "/"           ──▶ TG :8
                               │                                  └─ docker run -p 80:8080
                               └─ "/dashboard*" ──▶ TG :5000 ──▶ dashboard EC2 (private b)
 
-Lambda prod-pai-Infra-Aggregator ──(ทุก 2 นาที)──▶ กวาด AWS API ──▶ s3://prod-pai-logs/dashboard/current_infra.json
-                                                                         ▲
+เครื่องใน ASG บูตขึ้นมา ──▶ อ่าน SSM /prod-pai/app/image_tag ──▶ docker pull <tag> นั้นจาก ECR
+  (tag ไม่ได้ฝังใน launch template การ deploy จึงเหลือแค่เปลี่ยนค่าใน SSM แล้วสั่ง refresh)
+
+Lambda prod-pai-Infra-Aggregator ──▶ กวาด AWS API ──▶ s3://prod-pai-logs/dashboard/current_infra.json
+      ▲                                                                  ▲
+      ├─ EventBridge: ASG สลับเครื่อง / instance refresh ขยับ / EC2 เปลี่ยนสถานะ
+      ├─ Lambda quarantine สะกิดตอนกักเครื่อง (การติด tag ไม่มี event ของตัวเอง)
+      ├─ schedule ทุก 2 นาที (ตัวกันพลาด เผื่อ event หล่น)
+      └─ ปุ่ม Sync AWS บนหน้าเว็บ
                               dashboard EC2 อ่านผ่าน S3 Gateway Endpoint ─┘  (ไม่ออกอินเทอร์เน็ต)
 
 Falco บนทุกเครื่อง ── Critical ──▶ CloudWatch /falco/alerts ──▶ Lambda quarantine
@@ -61,7 +68,7 @@ Falco บนทุกเครื่อง ── Critical ──▶ CloudWatch 
 | `plodphai-todo-list` | โค้ดแอป + `ci.yml` ที่ push image ขึ้น ECR แล้ว rollout เข้า ASG ให้เอง | ฝั่งแอป |
 
 - ALB เสิร์ฟได้ **ทีละ 1 app** ขึ้นกับชื่อ ECR ใน `ec2.tf:14` ต้องตรงกับ `ECR_REPOSITORY` ในทั้งสอง workflow
-- เครื่องดึง image **ตอนบูตเท่านั้น** การเปลี่ยน image จึงต้องผ่าน instance refresh เสมอ
+- เครื่องดึง image **ตอนบูตเท่านั้น** (อ่าน tag จาก SSM) การเปลี่ยน image จึงต้องผ่าน instance refresh เสมอ
   CI ฝั่งแอปสั่งให้เองหลัง push หรือกด **Launch Image** เอง — ไม่ใช่กด Infra Setup ซ้ำ
 
 ---
@@ -165,9 +172,16 @@ curl -s "$(terraform output -raw dashboard_url)/health" # ต้องได้ 
 **ไม่ต้องทำอะไรเลย** — ฝั่งแอป push เข้า `main` → CI ทดสอบ สแกน build push ขึ้น ECR
 แล้วสั่ง rollout ต่อให้ในรันเดียวกัน ใช้เวลารวม ~10–15 นาที
 
-ขั้น rollout สร้าง launch template version ใหม่ (เปลี่ยนแค่ tag ของ image, AMI เดิม)
-แล้วติด tag ที่ ASG ให้ `instance_refresh` (Rolling, min healthy 50%, warmup 180s) ทยอยเปลี่ยนเครื่องเอง
-ไม่มีการลบเครื่องแล้วสร้างใหม่ทั้งชุด และถ้ามีรอบ refresh ค้างอยู่มันจะรอให้จบก่อน
+ขั้น rollout ทำแค่ 2 คำสั่ง ไม่แตะ Terraform และไม่แตะ launch template:
+
+```bash
+aws ssm put-parameter --name /prod-pai/app/image_tag --value <tag> --type String --overwrite
+aws autoscaling start-instance-refresh --auto-scaling-group-name <asg>   --preferences '{"MinHealthyPercentage":50,"InstanceWarmup":180}'
+```
+
+ASG ทยอยปิดเครื่องเก่าสร้างเครื่องใหม่ทีละส่วน เครื่องใหม่บูตมาอ่าน tag จาก SSM แล้ว
+`docker pull` ตัวนั้นมารันต่อทันที ไม่มีการลบเครื่องแล้วสร้างใหม่ทั้งชุด
+ถ้ามีรอบ refresh ค้างอยู่ workflow จะรอให้จบก่อนแทนที่จะยิงทับ
 
 **ย้อนกลับ (rollback)** — Actions ของ repo นี้ → **Launch Image** → ใส่ tag เก่าที่อยากกลับไป
 

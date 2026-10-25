@@ -48,6 +48,9 @@ resource "aws_lambda_function" "quarantine_function" {
       ISOLATED_SG_ID  = aws_security_group.falco_sg.id
       DATA_BUCKET     = var.data_bucket
       INCIDENT_PREFIX = "dashboard/incidents/"
+      # การติด tag ไม่ทำให้เกิด event ใดๆ จึงต้องสะกิด aggregator เอง
+      # ไม่งั้นกรอบแดงบนหน้า dashboard จะขึ้นช้าถึง 2 นาทีหลังเครื่องโดนยึด
+      AGGREGATOR_NAME = aws_lambda_function.infra_aggregator.function_name
     }
   }
 }
@@ -146,6 +149,81 @@ resource "aws_lambda_permission" "allow_eventbridge" {
   function_name = aws_lambda_function.infra_aggregator.function_name
   principal     = "events.amazonaws.com"
   source_arn    = aws_cloudwatch_event_rule.aggregator_schedule.arn
+}
+
+# -----
+# ยิง aggregator ทันทีตอนของเปลี่ยนจริง ไม่ต้องรอครบรอบ 2 นาที
+#
+# ตอน instance refresh เครื่องถูกสลับทีละตัว ถ้ารอ schedule อย่างเดียว หน้า dashboard
+# จะตามไม่ทันและโชว์เครื่องที่หายไปแล้วค้างอยู่นานถึง 2 นาที กฎนี้จับทั้งจังหวะที่ refresh
+# เริ่ม/ถึง checkpoint/จบ และจังหวะที่ ASG ปั้นหรือปลดเครื่องแต่ละตัว
+# ส่วน schedule ด้านบนเหลือไว้เป็นตัวกันพลาด เผื่อ event หล่น
+# -----
+resource "aws_cloudwatch_event_rule" "aggregator_asg_events" {
+  name        = "${local.name_prefix}-aggregator-asg-events"
+  description = "Refresh the dashboard snapshot when the ASG replaces instances"
+
+  event_pattern = jsonencode({
+    source = ["aws.autoscaling"]
+    detail-type = [
+      "EC2 Instance Launch Successful",
+      "EC2 Instance Terminate Successful",
+      "EC2 Instance Launch Unsuccessful",
+      "EC2 Instance Terminate Unsuccessful",
+      "EC2 Auto Scaling Instance Refresh Started",
+      "EC2 Auto Scaling Instance Refresh Succeeded",
+      "EC2 Auto Scaling Instance Refresh Failed",
+      "EC2 Auto Scaling Instance Refresh Cancelled",
+      "EC2 Auto Scaling Instance Refresh Checkpoint Reached",
+    ]
+  })
+
+  tags = local.common_tag
+}
+
+resource "aws_cloudwatch_event_target" "aggregator_asg_events" {
+  rule      = aws_cloudwatch_event_rule.aggregator_asg_events.name
+  target_id = "infra-aggregator-asg"
+  arn       = aws_lambda_function.infra_aggregator.arn
+}
+
+resource "aws_lambda_permission" "allow_eventbridge_asg" {
+  statement_id  = "AllowExecutionFromEventBridgeASG"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.infra_aggregator.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.aggregator_asg_events.arn
+}
+
+# เครื่องที่ไม่ได้อยู่ใต้ ASG (เช่น dashboard หรือ builder) ไม่มี event จาก autoscaling
+# จึงดักสถานะของ EC2 ตรงๆ อีกชั้น เพื่อให้เครื่องที่ terminated หายจากแผนผังทันที
+resource "aws_cloudwatch_event_rule" "aggregator_instance_state" {
+  name        = "${local.name_prefix}-aggregator-instance-state"
+  description = "Refresh the dashboard snapshot when any EC2 instance changes state"
+
+  event_pattern = jsonencode({
+    source      = ["aws.ec2"]
+    detail-type = ["EC2 Instance State-change Notification"]
+    detail = {
+      state = ["running", "shutting-down", "stopped", "terminated"]
+    }
+  })
+
+  tags = local.common_tag
+}
+
+resource "aws_cloudwatch_event_target" "aggregator_instance_state" {
+  rule      = aws_cloudwatch_event_rule.aggregator_instance_state.name
+  target_id = "infra-aggregator-instance-state"
+  arn       = aws_lambda_function.infra_aggregator.arn
+}
+
+resource "aws_lambda_permission" "allow_eventbridge_instance_state" {
+  statement_id  = "AllowExecutionFromEventBridgeInstanceState"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.infra_aggregator.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.aggregator_instance_state.arn
 }
 
 # -----

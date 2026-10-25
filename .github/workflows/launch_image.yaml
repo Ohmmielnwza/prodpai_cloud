@@ -1,19 +1,20 @@
 name: Launch Image
 
-# ใช้เมื่อ CI ของ repo prod-pai-todolist ดัน image ใหม่ขึ้น ECR เรียบร้อยแล้ว
+# ปล่อย image เวอร์ชันที่เลือกเองเข้าเครื่องที่กำลังรันอยู่ — ใช้ตอนอยากย้อนกลับ (rollback)
+# หรืออยากปล่อย tag ที่ไม่ใช่ตัวล่าสุด ปกติ CI ของ repo prod-pai-todolist ทำขั้นนี้ให้เองแล้ว
 #
-# หน้าที่เดียวของ workflow นี้คือ "บอก ASG ว่ามีของใหม่" แล้วปล่อยให้ ASG ทยอยเปลี่ยน
-# เครื่องเอง (instance_refresh แบบ Rolling, min_healthy_percentage 50, warmup 180 วินาที
-# ตั้งไว้แล้วใน ec2.tf) จึงไม่มีคำสั่ง terminate หรือสร้างเครื่องใหม่อยู่ในไฟล์นี้เลย
+# กลไกคือ "ป้ายประกาศ + สะกิด" ไม่แตะ Terraform และไม่แตะ launch template:
+#   1. เปลี่ยนค่าใน SSM Parameter Store ให้เป็น tag ใหม่
+#   2. สั่ง start-instance-refresh ให้ ASG ทยอยสลับเครื่อง
+# เครื่องใหม่บูตขึ้นมาอ่าน tag จาก SSM แล้ว docker pull ตัวนั้นมารัน
 #
-# ลำดับที่ถูกต้อง: Infra Setup ต้องเคยรันแล้ว (ต้องมี ASG + launch template อยู่ก่อน)
-# การเรียงลำดับเป็นหน้าที่คนกด ไม่ได้ผูกเงื่อนไขอัตโนมัติไว้
+# ไม่มีคำสั่งลบหรือสร้าง resource ใดๆ ในไฟล์นี้ การวาง topology เป็นของ Infra Setup
 
 on:
   workflow_dispatch:
     inputs:
       image_tag:
-        description: "tag ของ image ใน ECR ที่จะปล่อย (commit SHA จาก CI ของแอป)"
+        description: "tag ของ image ใน ECR ที่จะปล่อย (commit SHA จาก CI ของแอป หรือ latest)"
         required: true
         type: string
       wait:
@@ -24,25 +25,22 @@ on:
 permissions:
   contents: read
 
-# คนละกลุ่มกับ terraform เพราะไม่ได้แตะ state แต่กันตัวเองซ้อนกันเอง
 concurrency:
-  group: prodpai-launch-image
+  group: prodpai-rollout
   cancel-in-progress: false
 
 env:
   AWS_REGION: us-east-1
   ECR_REPOSITORY: plodphai-todo-list
+  IMAGE_TAG_PARAM: /prod-pai/app/image_tag
   IMAGE_TAG: ${{ inputs.image_tag }}
 
 jobs:
   roll:
-    name: Roll new image into the ASG
+    name: Roll the image into the ASG
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -51,6 +49,7 @@ jobs:
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: ${{ env.AWS_REGION }}
 
+      # เครื่องใหม่จะ pull tag นี้ตอนบูต ถ้าไม่มีจริงจะบูตขึ้นมาแบบไม่มีแอปทั้งชุด
       - name: Check image exists in ECR
         run: |
           if ! aws ecr describe-images --repository-name "$ECR_REPOSITORY" \
@@ -59,7 +58,7 @@ jobs:
             exit 1
           fi
 
-      - name: Find ASG and launch template
+      - name: Find the ASG
         id: find
         run: |
           asg=$(aws autoscaling describe-auto-scaling-groups \
@@ -69,57 +68,42 @@ jobs:
             echo "::error::ไม่พบ ASG — ต้องรัน Infra Setup ก่อน"
             exit 1
           fi
-          lt=$(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names "$asg" \
-            --query 'AutoScalingGroups[0].LaunchTemplate.LaunchTemplateId' --output text)
           echo "asg=$asg" >> "$GITHUB_OUTPUT"
-          echo "lt=$lt" >> "$GITHUB_OUTPUT"
-          echo "ASG=$asg  LaunchTemplate=$lt"
+          echo "ASG=$asg"
 
-      # ถ้ามีรอบเก่าค้างอยู่ การยิงรอบใหม่จะโดนปฏิเสธ แล้วเครื่องจะค้างคาอยู่ครึ่งทาง
-      - name: Refuse to overlap a running refresh
+      # ยิงรอบใหม่ทับรอบที่ยังไม่จบจะโดนปฏิเสธ แล้วเครื่องจะค้างคาอยู่ครึ่งทาง
+      - name: Wait for any running refresh to finish
         run: |
-          status=$(aws autoscaling describe-instance-refreshes \
+          for i in $(seq 1 40); do
+            status=$(aws autoscaling describe-instance-refreshes \
+              --auto-scaling-group-name "${{ steps.find.outputs.asg }}" \
+              --query 'InstanceRefreshes[0].Status' --output text)
+            case "$status" in
+              Pending|InProgress|Cancelling) echo "  รอรอบก่อนหน้า ($status)"; sleep 30 ;;
+              *) echo "ว่างแล้ว (ล่าสุด: $status)"; exit 0 ;;
+            esac
+          done
+          echo "::error::รอรอบก่อนหน้าไม่จบภายในเวลา"
+          exit 1
+
+      # 1. เปลี่ยนป้ายประกาศ
+      - name: Update the image tag in SSM
+        run: |
+          aws ssm put-parameter \
+            --name "$IMAGE_TAG_PARAM" \
+            --value "$IMAGE_TAG" \
+            --type String \
+            --overwrite >/dev/null
+          echo "✅ $IMAGE_TAG_PARAM = $IMAGE_TAG"
+
+      # 2. สะกิด ASG ให้ทยอยสลับเครื่อง (Rolling, min healthy 50%, warmup 180 วินาที)
+      - name: Trigger the rolling instance refresh
+        run: |
+          id=$(aws autoscaling start-instance-refresh \
             --auto-scaling-group-name "${{ steps.find.outputs.asg }}" \
-            --query 'InstanceRefreshes[0].Status' --output text)
-          echo "refresh ล่าสุด: $status"
-          case "$status" in
-            Pending|InProgress|Cancelling)
-              echo "::error::มี instance refresh ค้างอยู่ ($status) รอให้จบก่อน"
-              exit 1 ;;
-          esac
-
-      # สร้าง launch template version ใหม่โดยเปลี่ยนเฉพาะ user_data ที่ฝัง IMAGE_TAG
-      # ยึด AMI และค่าอื่นจาก version ล่าสุด เพื่อไม่ให้ของอื่นเปลี่ยนไปด้วย
-      - name: Create launch template version with the new tag
-        id: ltv
-        run: |
-          registry=$(aws sts get-caller-identity --query Account --output text).dkr.ecr.$AWS_REGION.amazonaws.com
-          ecr_url="$registry/$ECR_REPOSITORY"
-
-          sed -e "s|\${IMAGE_TAG}|$IMAGE_TAG|g" -e "s|\${ECR_URL}|$ecr_url|g" \
-            scripts/userdata.sh > /tmp/userdata.sh
-          base64 -w0 /tmp/userdata.sh > /tmp/userdata.b64
-
-          version=$(aws ec2 create-launch-template-version \
-            --launch-template-id "${{ steps.find.outputs.lt }}" \
-            --source-version '$Latest' \
-            --version-description "image $IMAGE_TAG" \
-            --launch-template-data "{\"UserData\":\"$(cat /tmp/userdata.b64)\"}" \
-            --query 'LaunchTemplateVersion.VersionNumber' --output text)
-
-          aws ec2 modify-launch-template \
-            --launch-template-id "${{ steps.find.outputs.lt }}" \
-            --default-version "$version" >/dev/null
-
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "สร้าง launch template version $version แล้ว"
-
-      # ASG ตั้ง triggers = ["tag"] ไว้ การเขียน tag ใหม่จึงเป็นสัญญาณให้เริ่ม rolling refresh
-      - name: Tag the ASG to trigger the rolling refresh
-        run: |
-          aws autoscaling create-or-update-tags --tags \
-            "ResourceId=${{ steps.find.outputs.asg }},ResourceType=auto-scaling-group,Key=ImageTag,Value=$IMAGE_TAG,PropagateAtLaunch=true"
-          echo "ติด tag ImageTag=$IMAGE_TAG แล้ว ASG จะทยอยเปลี่ยนเครื่องเอง"
+            --preferences '{"MinHealthyPercentage":50,"InstanceWarmup":180}' \
+            --query InstanceRefreshId --output text)
+          echo "✅ instance refresh $id เริ่มแล้ว"
 
       - name: Wait for the refresh to finish
         if: ${{ inputs.wait }}
@@ -132,12 +116,12 @@ jobs:
             pct=$(echo "$info" | awk '{print $2}')
             echo "  $status ${pct}%"
             case "$status" in
-              Successful) echo "refresh เสร็จแล้ว"; exit 0 ;;
+              Successful) echo "เครื่องทุกตัวรัน $IMAGE_TAG แล้ว"; exit 0 ;;
               Failed|Cancelled) echo "::error::instance refresh $status"; exit 1 ;;
             esac
             sleep 30
           done
-          echo "::warning::รอครบเวลาแล้วแต่ refresh ยังไม่จบ ไปดูต่อที่ console ได้"
+          echo "::warning::รอครบเวลาแล้วแต่ refresh ยังไม่จบ ไปดูต่อที่ ASG → Instance refresh"
 
       - name: Summary
         if: always()
@@ -146,8 +130,9 @@ jobs:
             echo "### Launch image"
             echo ""
             echo "- Image: \`$ECR_REPOSITORY:$IMAGE_TAG\`"
+            echo "- SSM: \`$IMAGE_TAG_PARAM\`"
             echo "- ASG: \`${{ steps.find.outputs.asg }}\`"
-            echo "- Launch template version: \`${{ steps.ltv.outputs.version }}\`"
             echo ""
-            echo "ASG ทยอยเปลี่ยนเครื่องเองแบบ rolling ไม่มีการลบแล้วสร้างใหม่ทั้งชุด"
+            echo "ASG ทยอยสลับเครื่องเองแบบ rolling เครื่องใหม่อ่าน tag จาก SSM ตอนบูต"
+            echo "ไม่มีการแก้ launch template และไม่มีการลบ-สร้างทั้งชุด"
           } >> "$GITHUB_STEP_SUMMARY"
