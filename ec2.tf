@@ -141,15 +141,9 @@ resource "aws_autoscaling_group" "asg" {
     version = "$Latest"
   }
 
-  # ค่านี้ใช้ตอน Terraform เป็นคนทำให้เกิด refresh เอง (เช่น launch template เปลี่ยน)
-  # ส่วนการปล่อยเวอร์ชันใหม่ ฝั่ง CD เรียก start-instance-refresh พร้อม preferences ของตัวเอง
-  instance_refresh {
-    strategy = "Rolling"
-    preferences {
-      min_healthy_percentage = 50
-      instance_warmup        = 180
-    }
-  }
+  # ไม่มี instance_refresh: บัญชี AWS Academy มี SCP deny autoscaling:StartInstanceRefresh
+  # ถ้าใส่ไว้ apply ที่ launch template เปลี่ยนจะพังตรงนี้ การเปลี่ยนเครื่องทำผ่าน
+  # scripts/rollout_asg.sh (Launch Image และ CI ของแอป) แทน
 
   # desired_capacity เปลี่ยนเองตาม scaling policy ไม่ใช่ค่าที่เราคุม
   lifecycle {
