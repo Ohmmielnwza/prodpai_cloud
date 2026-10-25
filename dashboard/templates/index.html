@@ -411,76 +411,30 @@
         }
 
         /* =========================================================
-           Nested topology — region > VPC > AZ > public/private > subnet
-           Every level gets its own border weight, tint and corner label so the
-           boundary you are inside stays readable at any zoom level.
+           Topology extras — AZ columns, subnet tags, compromised.
+           Frames are SVG rects (see "enclosures" above); these only add the AZ level,
+           the subnet header and the states the first version did not have.
            ========================================================= */
-        .dg-canvas { display: flex; flex-direction: column; gap: 28px; padding: 28px; align-items: flex-start; }
+        .g-rect.is-vpc { stroke-width: 1.5; }
+        .g-rect.is-vpc.is-default { stroke-dasharray: 2 4; }
+        .g-rect.is-az { fill: color-mix(in srgb, var(--surface-1) 35%, transparent); stroke: var(--line-3); stroke-dasharray: 5 4; }
+        .g-rect.is-band.is-isolated, .g-rect.is-band.is-unknown { fill: color-mix(in srgb, var(--surface-3) 40%, transparent); stroke: var(--line-2); }
+        .g-label.is-muted, .g-label.is-muted b { color: var(--ghost); }
+        .g-sub { display: none; font-size: 10.5px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--faint); }
+        .dg-world.is-plain .g-sub { display: inline; }
 
-        .fr-label { display: inline-flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--ink-2); white-space: nowrap; }
-        .fr-label i { font-size: 14px; }
-        .fr-title { font-weight: 650; }
-        .fr-sub { font-weight: 400; letter-spacing: 0; color: var(--faint); font-size: 10.5px; }
-        .fr-label.tone-muted, .fr-label.tone-muted .fr-title { color: var(--faint); }
-        .fr-chip { font-size: 10.5px; color: var(--faint); border: 1px dashed var(--line-3); border-radius: var(--r-pill); padding: 1px 9px; }
-        .fr-count { margin-left: auto; font-size: 10.5px; color: var(--faint); font-variant-numeric: tabular-nums; }
+        .sn-tag { position: absolute; display: inline-flex; align-items: center; gap: 6px; padding: 0 7px; border-radius: var(--r-sm); border: 1px solid transparent; background: transparent; font-size: 11px; color: var(--ink-2); white-space: nowrap; overflow: hidden; transition: border-color var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease), opacity var(--dur) var(--ease); }
+        .sn-tag i { font-size: 12px; flex: none; color: var(--faint); }
+        .sn-tag.z-public i { color: var(--svc-network); }
+        .sn-tag.z-private i { color: var(--sec); }
+        .sn-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+        .sn-cidr { color: var(--muted); font-size: 10.5px; flex: none; }
+        button.sn-tag:hover { border-color: var(--line-2); background: var(--surface-2); }
+        .sn-tag.is-selected { border-color: var(--accent-line); background: var(--surface-2); box-shadow: 0 0 0 3px var(--accent-soft); }
+        .has-selection .sn-tag.is-dim { opacity: .6; }
 
-        /* Region: the outermost box, dashed so it never reads as a device */
-        .rgn { border: 2px dashed var(--region-line); border-radius: 18px; padding: 14px; background: color-mix(in srgb, var(--surface-1) 45%, transparent); position: relative; }
-        .rgn > .fr-rgn { position: absolute; top: -11px; left: 18px; background: var(--bg); padding: 0 10px; }
-        .rgn > .fr-rgn i { color: var(--accent); }
-        .rgn-body { display: flex; flex-direction: column; gap: 16px; padding-top: 6px; }
-
-        /* VPC: solid frame, the strongest boundary in the picture */
-        .vpc { border: 2px solid var(--vpc-line); border-radius: 16px; background: var(--vpc-fill); position: relative; }
-        .vpc-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
-        .vpc-head .fr-vpc i { color: var(--svc-network); }
-        .vpc-body { display: flex; flex-direction: column; gap: 16px; padding: 16px; }
-        .vpc.is-default { border-style: dotted; opacity: .85; }
-        .vpc-collapse > summary { list-style: none; cursor: pointer; padding: 10px 16px; font-size: 11.5px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
-        .vpc-collapse > summary::-webkit-details-marker { display: none; }
-        .vpc-collapse[open] > summary i { transform: rotate(90deg); }
-        .vpc-collapse > summary i { transition: transform var(--dur) var(--ease); }
-
-        /* Edge rail: the path traffic takes before it reaches a subnet */
-        .rail { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 12px; border: 1px solid var(--line-2); border-radius: var(--r-xl); background: color-mix(in srgb, var(--surface-2) 55%, transparent); }
-        .rail-arrow { color: var(--edge); font-size: 14px; }
-
-        .az-row { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
-        .az { border: 1px dashed var(--line-3); border-radius: 14px; padding: 12px; background: color-mix(in srgb, var(--surface-1) 55%, transparent); min-width: 300px; }
-        .az > .fr-az { margin-bottom: 10px; }
-        .az > .fr-az i { color: var(--muted); }
-        .az-body { display: flex; flex-direction: column; gap: 10px; }
-
-        /* Public / private bands: colour carries the meaning, the label spells it out */
-        .band { border-radius: 12px; padding: 10px; border: 1px solid transparent; }
-        .band > .fr-band { margin-bottom: 8px; }
-        .band-body { display: flex; gap: 10px; flex-wrap: wrap; }
-        .band.z-public { background: var(--zone-public); border-color: var(--zone-public-line); }
-        .band.z-public .fr-band i, .band.z-public .fr-title { color: var(--svc-network); }
-        .band.z-private { background: var(--zone-private); border-color: var(--zone-private-line); }
-        .band.z-private .fr-band i, .band.z-private .fr-title { color: var(--svc-security); }
-        .band.z-isolated, .band.z-unknown { background: color-mix(in srgb, var(--surface-3) 50%, transparent); border-color: var(--line-2); }
-
-        .sn { border: 1px solid var(--line-2); border-radius: var(--r-xl); background: color-mix(in srgb, var(--surface-1) 80%, transparent); min-width: 268px; }
-        .sn-head { display: flex; align-items: baseline; gap: 8px; padding: 8px 12px; border-bottom: 1px dashed var(--line-2); }
-        .sn-name { font-size: 11.5px; font-weight: 600; }
-        .sn-cidr { font-size: 10.5px; color: var(--muted); }
-        .sn-az { margin-left: auto; font-size: 10px; color: var(--faint); }
-        .sn-body { display: flex; flex-direction: column; gap: 8px; padding: 10px; }
-        .sn-empty { font-size: 11px; color: var(--ghost); padding: 2px; }
-
-        .sg-strip { border-top: 1px dashed var(--line-2); padding-top: 12px; }
-        .sg-strip > .fr-sg { margin-bottom: 8px; }
-        .sg-strip > .fr-sg i { color: var(--svc-security); }
-        .sg-row { display: flex; gap: 8px; flex-wrap: wrap; }
-
-        /* Nodes sit in flow here instead of being positioned by a layout pass */
-        .dg-world .node { position: relative; left: auto; top: auto; min-width: 212px; min-height: 52px; padding: 8px 10px; }
-        .dg-world .node.is-external { min-width: 132px; }
-        .node-plain { display: none; font-size: 10.5px; line-height: 15px; color: var(--faint); margin-top: 3px; white-space: normal; }
-        .dg-world.is-plain .node-plain { display: block; }
-        .dg-world.is-plain .node { min-width: 236px; }
+        .node-plain { display: none; font-size: 10.5px; line-height: 14px; color: var(--faint); margin-top: 2px; white-space: normal; }
+        .dg-world.is-plain .node-plain { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 
         /* Compromised: loud on purpose — this is the one thing nobody should scroll past */
         .node.is-compromised {
@@ -489,9 +443,11 @@
             background: color-mix(in srgb, var(--err) 16%, var(--surface-2));
             box-shadow: 0 0 0 4px var(--err-soft), var(--shadow-3);
             animation: compromised-pulse 1.6s ease-in-out infinite;
+            z-index: 1;
         }
         .node.is-compromised .node-name, .node.is-compromised .node-kicker { color: var(--err); }
-        .node-flag { display: inline-flex; align-items: center; gap: 4px; font-size: 9.5px; font-weight: 700; letter-spacing: .08em; color: var(--err); border: 1px solid var(--err); border-radius: var(--r-pill); padding: 1px 7px; }
+        .node.is-compromised .node-kicker { font-weight: 700; display: flex; align-items: center; gap: 3px; }
+        .node.is-compromised .node-kicker i { font-size: 11px; }
         @keyframes compromised-pulse {
             0%, 100% { box-shadow: 0 0 0 3px var(--err-soft), var(--shadow-2); }
             50% { box-shadow: 0 0 0 9px color-mix(in srgb, var(--err) 8%, transparent), var(--shadow-3); }
@@ -528,9 +484,6 @@
         .inc-raw { font-size: 10.5px; color: var(--faint); margin-top: 4px; word-break: break-word; }
 
         @media (max-width: 760px) {
-            .dg-canvas { padding: 14px; }
-            .az-row { flex-direction: column; }
-            .az, .sn { min-width: 0; width: 100%; }
             .cost-bars li { grid-template-columns: 1fr 70px; }
             .cost-track { grid-column: 1 / -1; }
         }
@@ -608,11 +561,12 @@
                 <div class="panel-head">
                     <h2 id="dg-title"><i class="ph ph-graph" aria-hidden="true"></i>Architecture</h2>
                     <div class="legend" aria-label="Diagram legend">
-                        <span><i class="ph ph-globe-hemisphere-west" aria-hidden="true"></i>Region</span>
-                        <span><i class="ph ph-cloud" aria-hidden="true"></i>VPC</span>
-                        <span><i class="ph ph-map-pin" aria-hidden="true"></i>Availability zone</span>
-                        <span class="lg-zone z-public">Public — เปิดสู่อินเทอร์เน็ต</span>
-                        <span class="lg-zone z-private">Private — ปิดจากภายนอก</span>
+                        <span><svg aria-hidden="true"><line x1="1" y1="4" x2="21" y2="4" class="edge k-traffic"/></svg>Traffic</span>
+                        <span><svg aria-hidden="true"><line x1="1" y1="4" x2="21" y2="4" class="edge k-egress"/></svg>Route ออกเน็ต</span>
+                        <span><svg aria-hidden="true"><line x1="1" y1="4" x2="21" y2="4" class="edge k-security"/></svg>Security response</span>
+                        <span><svg aria-hidden="true"><line x1="1" y1="4" x2="21" y2="4" class="edge k-provision"/></svg>Provisioning</span>
+                        <span class="lg-zone z-public">Public</span>
+                        <span class="lg-zone z-private">Private</span>
                         <span class="lg-zone z-danger">ถูกยึด</span>
                     </div>
                 </div>
@@ -1152,20 +1106,24 @@
             renderCards();
         }
 
-        // ---------- diagram: nested layout ----------
-        // The aggregator sends a nested shape, so the diagram mirrors it one level at a time:
-        // region -> VPC -> availability zone -> public/private band -> subnet -> node.
-        // Frames are plain DOM in flow, which keeps every border exactly where the data says
-        // it is; pan/zoom still works because the whole world is one transformed element.
+        // ---------- diagram: layout ----------
+        // Same top-down picture as the first version (Internet -> IGW -> ALB -> target group ->
+        // instances, with drawn arrows), but every instance now sits inside its own subnet and
+        // every subnet inside its own AZ column. The aggregator already nests region -> VPC -> AZ
+        // -> band -> subnet; this pass turns that into coordinates so the arrows can be routed
+        // between real boxes. Load balancing lives in a lane between the AZ columns, so the
+        // traffic lines fan out sideways into the subnets instead of cutting through them.
         const view = { s: 1, x: 0, y: 0, w: 0, h: 0, moved: false };
         let layout = null;
         const svcClass = (r) => `svc-${(r.category || 'other').toLowerCase()}`;
+        const SVGNS = 'http://www.w3.org/2000/svg';
+        const svgEl = (tag, attrs) => { const n = document.createElementNS(SVGNS, tag); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); return n; };
 
         const ZONE = {
-            public: ['Public', 'ออกและรับจากอินเทอร์เน็ตได้', 'globe-hemisphere-west'],
-            private: ['Private', 'เข้าได้เฉพาะจากในวง ไม่เปิดสู่อินเทอร์เน็ต', 'lock-key'],
-            isolated: ['Isolated', 'ไม่มีทางออกอินเทอร์เน็ตเลย', 'prohibit'],
-            unknown: ['Unclassified', 'อ่าน route table ไม่ได้ จึงยังบอกไม่ได้ว่าเป็นโซนไหน', 'question']
+            public: ['Public subnet', 'ออกและรับจากอินเทอร์เน็ตได้', 'globe-simple'],
+            private: ['Private subnet', 'เข้าได้เฉพาะจากในวง ไม่เปิดสู่อินเทอร์เน็ต', 'lock-simple'],
+            isolated: ['Isolated subnet', 'ไม่มีทางออกอินเทอร์เน็ตเลย', 'prohibit'],
+            unknown: ['Subnet', 'อ่าน route table ไม่ได้ จึงยังบอกไม่ได้ว่าเป็นโซนไหน', 'question']
         };
 
         // คำอธิบายภาษาคนทั่วไป สำหรับโหมด "อธิบายแบบง่าย"
@@ -1188,7 +1146,12 @@
             if (isMember(r)) return { kicker: 'EC2 instance', name: r.id, sub: [statusWord(r), r.ips[0]].filter(Boolean).join(' · ') };
             if (isBuilder(r)) return { kicker: 'AMI builder', name: r.id, sub: statusWord(r) };
             if (r.type === 'aws_security_group') return { kicker: 'Security group', name: r.name, sub: r.spec || r.id };
-            if (r.type === 'aws_nat_gateway') return { kicker: 'NAT gateway', name: r.name, sub: r.ips[0] || '' };
+            if (r.type === 'aws_nat_gateway') return { kicker: 'NAT gateway', name: r.name, sub: r.ips[r.ips.length - 1] || r.spec };
+            if (r.type === 'aws_lb') return { kicker: 'Load balancer', name: r.name, sub: r.spec };
+            if (r.type === 'aws_lb_target_group') return { kicker: 'Target group', name: r.name, sub: r.status };
+            if (r.type === 'aws_internet_gateway') return { kicker: 'Internet gateway', name: r.name, sub: r.id };
+            if (r.type === 'aws_wafv2_web_acl') return { kicker: 'WAF web ACL', name: r.name, sub: r.spec };
+            if (r.type === 'aws_autoscaling_group') return { kicker: 'Auto Scaling group', name: r.name, sub: r.status };
             return { kicker: typeLabel(r.type), name: r.name, sub: r.spec || r.id };
         }
 
@@ -1200,195 +1163,328 @@
             const id = typeof raw === 'string' ? raw : raw.id;
             return state.data.resources.find((r) => r.id === id) || null;
         }
+        const resolveAll = (list) => (Array.isArray(list) ? list : []).map(resolve).filter(Boolean);
+        const isCompromised = (r) => r.compromised || (r.type === 'aws_instance' && r.health === 'error');
+        const isQuarantine = (r) => /quarantin|isolat/i.test(r.name);
 
-        function nodeEl(r, opts = {}) {
+        const G = { W: 200, H: 56, gap: 12, snPad: 12, snHead: 32, azPad: 14, azHead: 36, colGap: 24, lane: 264, pad: 24 };
+        const ZONES = ['public', 'private', 'isolated', 'unknown'];
+
+        function buildLayout(regions) {
+            const W = G.W, H = state.plain ? 84 : G.H;
+            const L = { nodes: [], groups: [], labels: [], chips: [], ghosts: [], edges: [], w: 0, h: 0 };
+            const byId = new Map();
+            const add = (r, x, y, w = W, extra = {}) => { const n = { r, x, y, w, h: H, ...extra }; L.nodes.push(n); if (r) byId.set(r.id, n); return n; };
+            const E = (from, fs, to, ts, kind, label, opt = {}) => { if (from && to) L.edges.push({ from, fs, to, ts, kind, label, ...opt }); };
+            const group = (g) => { L.groups.push(g); return g; };
+            const facing = (from, to) => ((to.x + to.w / 2) < (from.x + from.w / 2) ? 'l' : 'r');
+            const opposite = { l: 'r', r: 'l' };
+
+            const snNodes = (entry, zone) => {
+                const list = (entry.nodes || []).map(resolve).filter(Boolean);
+                // NAT goes last in a public subnet so the route arrow from the private subnet below
+                // can reach it without passing through anything else
+                if (zone === 'public') list.sort((a, b) => (a.type === 'aws_nat_gateway') - (b.type === 'aws_nat_gateway'));
+                return list;
+            };
+            const snH = (n) => G.snHead + (n ? n * H + (n - 1) * G.gap : 34) + G.snPad;
+            const stackH = (count) => count * H + Math.max(count - 1, 0) * G.gap;
+
+            const internet = { r: null, x: 0, y: 0, w: 140, h: 44, external: true };
+            L.nodes.push(internet);
+            const gateways = [];
+
+            let y = internet.h + 40;
+            let right = 0;
+            for (const region of regions) {
+                const regionT = y;
+                group({ x: 0, y: regionT, w: 0, h: 0, kind: 'region', z: 0, scope: `Region ${region.name}` });
+                const regionGroup = L.groups[L.groups.length - 1];
+                L.labels.push({ x: 14, y: regionT + 12, ico: 'globe-hemisphere-west', title: 'AWS region', value: region.name, sub: 'พื้นที่ทางภูมิศาสตร์ที่ของทุกชิ้นด้านในตั้งอยู่' });
+                let vy = regionT + 46 + H / 2;
+                let regionR = 0;
+
+                for (const vpc of region.vpcs || []) {
+                    const vx = G.pad;
+                    const azs = vpc.azs || [];
+                    const edge = vpc.edge || {};
+                    const nodeCount = azs.reduce((sum, az) => sum + Object.values(az.bands || {})
+                        .reduce((n, es) => n + es.reduce((m, e) => m + (e.nodes || []).length, 0), 0), 0);
+
+                    // The default VPC that comes with the account holds nothing of ours most of the
+                    // time; fold it to one line so it does not compete with the real one.
+                    if (vpc.is_default && !nodeCount) {
+                        const w = 440, h = 52;
+                        group({ x: vx, y: vy, w, h, kind: 'vpc is-default', z: 1, scope: `VPC ${vpc.name} (default)` });
+                        L.labels.push({ x: vx + 14, y: vy + 12, ico: 'cloud', title: 'Default VPC', value: `${vpc.cidr || ''} · ${azs.length} AZ · ว่าง`, sub: 'ติดมากับบัญชี ไม่ใช่ของโปรเจกต์นี้', muted: true });
+                        regionR = Math.max(regionR, vx + w);
+                        vy += h + 40 + H / 2;
+                        continue;
+                    }
+
+                    const lbs = resolveAll(edge.load_balancers);
+                    const tgRaw = (edge.target_groups || []).filter((t) => resolve(t));
+                    const tgs = tgRaw.map(resolve);
+                    const waf = resolveAll(edge.waf)[0] || null;
+                    const igw = resolve(edge.internet_gateway);
+                    const asgRaw = (vpc.auto_scaling_groups || []).filter((g) => resolve(g));
+                    const sgs = resolveAll(vpc.security_groups).sort((a, b) => isQuarantine(b) - isQuarantine(a));
+                    const hasLane = lbs.length + tgs.length + asgRaw.length > 0;
+
+                    // columns: AZs left to right, with the load-balancing lane in the middle
+                    const azW = W + 2 * G.snPad + 2 * G.azPad;
+                    const split = Math.ceil(azs.length / 2);
+                    const cols = [];
+                    let cur = vx + G.pad, laneX = null;
+                    azs.forEach((az, i) => {
+                        if (hasLane && i === split) { laneX = cur; cur += G.lane; } else if (i > 0) cur += G.colGap;
+                        cols.push(cur);
+                        cur += azW;
+                    });
+                    if (hasLane && laneX === null) { laneX = cur; cur += G.lane; }
+                    const vpcW = Math.max(cur + G.pad - vx, 460);
+                    const mx = hasLane ? laneX + G.lane / 2 : vx + vpcW / 2;
+
+                    // VPC label on the top-left; drop it below the IGW when the two would touch
+                    const vpcTitle = `${vpc.name} · ${vpc.cidr || ''}`.replace(/ · $/, '');
+                    const labelW = 70 + vpcTitle.length * 7;
+                    const clash = igw && vx + G.pad + labelW > mx - W / 2 - 12;
+                    let top = vy + H / 2 + 28;
+                    L.labels.push({ x: vx + G.pad, y: clash ? vy + H / 2 + 8 : vy + 12, ico: 'cloud', title: 'VPC', value: vpcTitle, sub: vpc.is_default ? 'VPC ติดมากับบัญชี' : 'วงเครือข่ายส่วนตัวของเรา', muted: vpc.is_default });
+                    if (clash) top += 22;
+
+                    const nIgw = igw ? add(igw, mx - W / 2, vy - H / 2) : null;
+                    if (nIgw) gateways.push(nIgw);
+
+                    // load balancers sit above the AZ frames: they span every public subnet
+                    const nLbs = lbs.map((r, i) => add(r, mx - (lbs.length * W + (lbs.length - 1) * 24) / 2 + i * (W + 24), top));
+                    if (nLbs.length) top += H + 40;
+                    const azT = top;
+
+                    // rows are shared across AZ columns so public lines up with public, private with private
+                    const zones = ZONES.filter((z) => azs.some((az) => ((az.bands || {})[z] || []).length));
+                    const rowH = zones.map((z) => Math.max(...azs.map((az) => {
+                        const es = (az.bands || {})[z] || [];
+                        return es.reduce((s, e) => s + snH(snNodes(e, z).length), 0) + Math.max(es.length - 1, 0) * G.gap;
+                    })));
+                    const tgAfter = zones.indexOf('public');
+                    const tgH = stackH(tgs.length);
+                    let ry = azT + G.azHead, tgY = null;
+                    if (tgs.length && tgAfter === -1) { tgY = ry; ry += tgH + 32; }
+                    const rowY = [];
+                    zones.forEach((z, k) => {
+                        rowY.push(ry);
+                        ry += rowH[k];
+                        if (k === tgAfter && tgs.length) { tgY = ry + 24; ry += tgH + 48; } else if (k < zones.length - 1) ry += 24;
+                    });
+                    const azB = ry + G.azPad;
+
+                    // lane: target groups between public and private, ASGs level with private
+                    const nTgs = tgs.map((r, i) => add(r, mx - W / 2, tgY + i * (H + G.gap)));
+                    const privK = zones.indexOf('private');
+                    const asgTop = privK >= 0 ? rowY[privK] + (rowH[privK] - stackH(asgRaw.length)) / 2 : (tgY !== null ? tgY + tgH + 32 : azT + G.azHead);
+                    const nAsgs = asgRaw.map((g, i) => add(resolve(g), mx - W / 2, asgTop + i * (H + G.gap), W, { aux: true }));
+
+                    // AZ columns -> subnets -> nodes
+                    const boxes = new Map();
+                    const natsByAz = new Map();
+                    azs.forEach((az, i) => {
+                        const cx = cols[i];
+                        group({ x: cx, y: azT, w: azW, h: azB - azT, kind: 'az', z: 2, scope: `AZ ${az.id}` });
+                        L.labels.push({ x: cx + 12, y: azT + 12, ico: 'map-pin', title: 'AZ', value: az.id, sub: 'ศูนย์ข้อมูลคนละตึก' });
+                        zones.forEach((z, k) => {
+                            let sy = rowY[k];
+                            for (const entry of (az.bands || {})[z] || []) {
+                                const sn = entry.subnet || {};
+                                const list = snNodes(entry, z);
+                                const box = { x: cx + G.azPad, y: sy, w: W + 2 * G.snPad, h: snH(list.length), r: resolve(sn.id), zone: z, az: az.id, sn };
+                                group({ ...box, kind: `band is-${z}`, z: 3, scope: `${ZONE[z][0]} ${sn.name || sn.id}` });
+                                boxes.set(sn.id, box);
+                                L.chips.push({ r: box.r, sn, zone: z, x: box.x + 8, y: sy + 7, w: box.w - 16, h: 20 });
+                                if (!list.length) L.ghosts.push({ x: box.x + G.snPad, y: sy + G.snHead, w: W, h: 34, label: 'ยังไม่มี resource' });
+                                list.forEach((r, j) => {
+                                    const n = add(r, box.x + G.snPad, sy + G.snHead + j * (H + G.gap), W, { aux: isBuilder(r) });
+                                    if (r.type === 'aws_nat_gateway' && !natsByAz.has(az.id)) natsByAz.set(az.id, n);
+                                });
+                                sy += box.h + G.gap;
+                            }
+                        });
+                    });
+
+                    // security groups along the bottom of the VPC; quarantine first so the
+                    // "isolated" arrow lands on a box with nothing above it
+                    let vpcB = azB;
+                    if (sgs.length) {
+                        const sgT = azB + 30;
+                        const perRow = Math.max(Math.floor((vpcW - 2 * G.pad + G.gap) / (W + G.gap)), 1);
+                        L.labels.push({ x: vx + G.pad, y: sgT, ico: 'lock-key', title: 'Security groups', sub: 'กฎว่าใครเข้าถึงอะไรได้' });
+                        sgs.forEach((r, i) => add(r, vx + G.pad + (i % perRow) * (W + G.gap), sgT + 24 + Math.floor(i / perRow) * (H + G.gap), W, { aux: true }));
+                        vpcB = sgT + 24 + Math.ceil(sgs.length / perRow) * (H + G.gap) - G.gap;
+                    }
+                    vpcB += G.pad;
+                    group({ x: vx, y: vy, w: vpcW, h: vpcB - vy, kind: `vpc${vpc.is_default ? ' is-default' : ''}`, z: 1, scope: `VPC ${vpcTitle}` });
+                    regionR = Math.max(regionR, vx + vpcW);
+
+                    // WAF is regional and attached to the ALB, so it sits just outside the VPC
+                    const nWaf = waf && nLbs.length ? add(waf, vx + vpcW + 48, nLbs[nLbs.length - 1].y, W, { aux: true }) : null;
+                    if (nWaf) regionR = Math.max(regionR, nWaf.x + W);
+
+                    // ---- edges ----
+                    nLbs.forEach((n) => E(nIgw, 'b', n, 't', 'traffic'));
+                    if (nWaf) E(nWaf, 'l', nLbs[nLbs.length - 1], 'r', 'security', 'inspects');
+                    tgRaw.forEach((t, i) => {
+                        const nTg = nTgs[i];
+                        const arns = Array.isArray(t.load_balancer_arns) ? t.load_balancer_arns : [];
+                        const from = arns.length ? nLbs.filter((n) => arns.includes(n.r.id)) : nLbs;
+                        from.forEach((n) => E(n, 'b', nTg, 't', 'traffic'));
+                        for (const m of t.members || []) {
+                            const target = byId.get(m.target_id);
+                            if (!target) continue;
+                            const side = facing(nTg, target);
+                            E(nTg, side, target, opposite[side], 'traffic', m.state === 'healthy' ? null : m.state);
+                        }
+                    });
+                    asgRaw.forEach((g, i) => {
+                        const ids = Array.isArray(g.subnet_ids) ? g.subnet_ids : [];
+                        let labelled = false;
+                        for (const id of ids) {
+                            const box = boxes.get(id);
+                            if (!box) continue;
+                            const side = facing(nAsgs[i], box);
+                            E(nAsgs[i], side, box, opposite[side], 'provision', labelled ? null : 'launches');
+                            labelled = true;
+                        }
+                    });
+
+                    // routes: each private subnet sends 0.0.0.0/0 to a NAT, the NAT goes out the IGW
+                    const anyNat = natsByAz.values().next().value || null;
+                    for (const box of boxes.values()) {
+                        if (box.zone !== 'private') continue;
+                        const nat = byId.get(box.sn.route_target) || natsByAz.get(box.az) || anyNat;
+                        if (nat) E(box, 't', nat, 'b', 'egress', '0.0.0.0/0', { fp: [box.x + box.w / 2, box.y] });
+                    }
+                    // NAT -> IGW runs up the VPC gutter and along the top border, like a route
+                    // drawn by hand, so it never cuts through whatever sits above the NAT
+                    for (const nat of new Set(natsByAz.values())) {
+                        if (!nIgw) break;
+                        const left = nat.x + nat.w / 2 < mx;
+                        const gx = left ? vx + G.pad / 2 : vx + vpcW - G.pad / 2;
+                        const sy = nat.y + nat.h / 2, ty = nIgw.y + 14;
+                        const ex = left ? nIgw.x : nIgw.x + nIgw.w;
+                        E(nat, left ? 'l' : 'r', nIgw, left ? 'l' : 'r', 'egress', 'outbound', {
+                            pts: [[left ? nat.x : nat.x + nat.w, sy], [gx, sy], [gx, ty], [ex, ty]]
+                        });
+                    }
+
+                    // a compromised instance gets swapped onto the quarantine security group
+                    const quarantine = sgs.find(isQuarantine);
+                    const nQuar = quarantine ? byId.get(quarantine.id) : null;
+                    if (nQuar) {
+                        for (const n of L.nodes) {
+                            if (!n.r || n.r.type !== 'aws_instance' || !isCompromised(n.r)) continue;
+                            // out the outer side, down the VPC gutter, along the gap under the AZs,
+                            // then into the quarantine group — never through another box
+                            const left = n.x + n.w / 2 < mx;
+                            const gx = left ? vx + G.pad / 2 : vx + vpcW - G.pad / 2;
+                            const cy = n.y + n.h / 2, ly = azB + 15, qx = nQuar.x + nQuar.w - 30;
+                            E(n, left ? 'l' : 'r', nQuar, 't', 'security', 'isolated', {
+                                pts: [[left ? n.x : n.x + n.w, cy], [gx, cy], [gx, ly], [qx, ly], [qx, nQuar.y]]
+                            });
+                        }
+                    }
+
+                    vy = vpcB + 40 + H / 2;
+                }
+
+                regionGroup.w = regionR + 24;
+                regionGroup.h = vy - H / 2 - 16 - regionT;
+                right = Math.max(right, regionGroup.w);
+                y = regionT + regionGroup.h + 32;
+            }
+
+            // Internet sits above the first gateway; with no gateway it just centres
+            const anchorX = gateways.length ? gateways[0].x + gateways[0].w / 2 : right / 2;
+            internet.x = anchorX - internet.w / 2;
+            gateways.forEach((g) => E(internet, 'b', g, 't', 'traffic'));
+
+            L.w = Math.max(right, internet.x + internet.w);
+            L.h = y - 32;
+            return L;
+        }
+
+        // ---------- diagram: geometry ----------
+        const NORMAL = { t: [0, -1], b: [0, 1], l: [-1, 0], r: [1, 0] };
+        function anchor(n, side) {
+            if (side === 't') return [n.x + n.w / 2, n.y];
+            if (side === 'b') return [n.x + n.w / 2, n.y + n.h];
+            if (side === 'l') return [n.x, n.y + n.h / 2];
+            return [n.x + n.w, n.y + n.h / 2];
+        }
+        // Orthogonal route with rounded corners; the label sits on the longest leg
+        function polyGeom(pts) {
+            let d = `M ${pts[0][0]} ${pts[0][1]}`, best = 0, mid = pts[0];
+            for (let i = 1; i < pts.length; i++) {
+                const [ax, ay] = pts[i - 1], [bx, by] = pts[i];
+                const len = Math.hypot(bx - ax, by - ay);
+                if (len > best) { best = len; mid = [(ax + bx) / 2, (ay + by) / 2]; }
+                if (i === pts.length - 1) { d += ` L ${bx} ${by}`; break; }
+                const [cx, cy] = pts[i + 1];
+                const r = Math.min(10, len / 2, Math.hypot(cx - bx, cy - by) / 2);
+                const ux = Math.sign(bx - ax), uy = Math.sign(by - ay), vx = Math.sign(cx - bx), vy = Math.sign(cy - by);
+                d += ` L ${bx - ux * r} ${by - uy * r} Q ${bx} ${by} ${bx + vx * r} ${by + vy * r}`;
+            }
+            return { d, mid };
+        }
+        function edgeGeom(e) {
+            if (e.pts) return polyGeom(e.pts);
+            const p1 = e.fp || anchor(e.from, e.fs), p2 = e.tp || anchor(e.to, e.ts);
+            const dist = Math.hypot(p2[0] - p1[0], p2[1] - p1[1]);
+            const k = Math.min(Math.max(dist * 0.42, 24), 120);
+            const n1 = NORMAL[e.fs], n2 = NORMAL[e.ts];
+            const c1 = [p1[0] + n1[0] * k, p1[1] + n1[1] * k];
+            const c2 = [p2[0] + n2[0] * k, p2[1] + n2[1] * k];
+            const mid = [0, 1].map((j) => 0.125 * p1[j] + 0.375 * c1[j] + 0.375 * c2[j] + 0.125 * p2[j]);
+            return { d: `M ${p1[0]} ${p1[1]} C ${c1[0]} ${c1[1]}, ${c2[0]} ${c2[1]}, ${p2[0]} ${p2[1]}`, mid };
+        }
+
+        // ---------- diagram: render ----------
+        function nodeEl(n) {
+            if (n.external) {
+                const e = el('div', 'node is-external');
+                Object.assign(e.style, { left: `${n.x}px`, top: `${n.y}px`, width: `${n.w}px`, height: `${n.h}px` });
+                e.append(icon('globe-simple'), el('span', 'node-name', 'Internet'));
+                return e;
+            }
+            const r = n.r;
             const b = el('button', `node ${svcClass(r)}`);
             b.type = 'button';
-            if (opts.aux) b.classList.add('is-aux');
+            if (n.aux) b.classList.add('is-aux');
             if (r.health === 'inactive') b.classList.add('is-inactive');
-            // 🚨 เครื่องที่โดนยึดต้องเห็นชัดที่สุดในหน้า: กรอบแดง พื้นแดง และไฟกระพริบ
-            if (r.health === 'error' || /compromis/i.test(r.status)) b.classList.add('is-compromised');
+            Object.assign(b.style, { left: `${n.x}px`, top: `${n.y}px`, width: `${n.w}px`, height: `${n.h}px` });
 
             const ic = el('span', 'node-ico');
             ic.append(icon(isBuilder(r) ? 'wrench' : typeIcon(r.type)));
             const lbl = nodeLabel(r);
             const txt = el('span', 'node-txt');
-            txt.append(el('span', 'node-kicker', lbl.kicker), el('span', `node-name${isMember(r) ? ' mono' : ''}`, lbl.name));
+            // เครื่องที่โดนยึดต้องเห็นชัดที่สุดในหน้า: กรอบแดง พื้นแดง ไฟกระพริบ และหัวกล่องเปลี่ยนเป็น COMPROMISED
+            const bad = isCompromised(r);
+            const kicker = el('span', 'node-kicker');
+            if (bad) {
+                b.classList.add('is-compromised');
+                kicker.append(icon('warning-octagon'), document.createTextNode('Compromised'));
+            } else {
+                kicker.textContent = lbl.kicker;
+            }
+            txt.append(kicker, el('span', `node-name${isMember(r) ? ' mono' : ''}`, lbl.name));
             if (lbl.sub) txt.append(el('span', 'node-sub', lbl.sub));
             if (PLAIN[r.type]) txt.append(el('span', 'node-plain', PLAIN[r.type]));
             b.append(ic, txt, statusDot(r));
 
-            if (b.classList.contains('is-compromised')) {
-                const flag = el('span', 'node-flag');
-                flag.append(icon('warning-octagon'), document.createTextNode('ISOLATED'));
-                b.append(flag);
-            }
-
             b.dataset.key = r.key;
             b.title = `${r.name} (${typeLabel(r.type)})`;
-            b.setAttribute('aria-label', `${r.name}, ${typeLabel(r.type)}, status ${r.status}`);
+            b.setAttribute('aria-label', `${r.name}, ${isBuilder(r) ? 'AMI builder ' : ''}${typeLabel(r.type)}, status ${r.status}${isCompromised(r) ? ', compromised and isolated' : ''}`);
             b.addEventListener('click', () => select(r.key));
             return b;
-        }
-
-        function frameLabel(cls, ico, title, sub, tone) {
-            const l = el('div', `fr-label fr-${cls}${tone ? ' tone-' + tone : ''}`);
-            l.append(icon(ico), el('span', 'fr-title', title));
-            if (sub) l.append(el('span', 'fr-sub', sub));
-            return l;
-        }
-
-        function subnetEl(entry) {
-            const sn = entry.subnet;
-            const box = el('div', 'sn');
-            const head = el('div', 'sn-head');
-            head.append(el('span', 'sn-name', sn.name), el('span', 'sn-cidr mono', sn.cidr));
-            if (sn.az) head.append(el('span', 'sn-az', sn.az));
-            box.append(head);
-
-            const body = el('div', 'sn-body');
-            const nodes = (entry.nodes || []).map(resolve).filter(Boolean);
-            if (!nodes.length) body.append(el('p', 'sn-empty', 'ยังไม่มี resource ในย่านนี้'));
-            for (const r of nodes) body.append(nodeEl(r));
-            box.append(body);
-            return box;
-        }
-
-        function bandEl(zone, entries) {
-            const [title, hint, ico] = ZONE[zone] || ZONE.unknown;
-            const band = el('div', `band z-${zone}`);
-            band.append(frameLabel('band', ico, title, hint));
-            const row = el('div', 'band-body');
-            for (const entry of entries) row.append(subnetEl(entry));
-            band.append(row);
-            return band;
-        }
-
-        function azEl(az) {
-            const box = el('div', 'az');
-            box.append(frameLabel('az', 'map-pin', `Availability Zone ${az.id}`, 'ศูนย์ข้อมูลคนละตึก ของเสียพร้อมกันได้ยาก'));
-            const body = el('div', 'az-body');
-            // เรียงให้ public อยู่บนเสมอ ภาพจะได้อ่านจากบน (ใกล้อินเทอร์เน็ต) ลงล่าง (ลึกที่สุด)
-            for (const zone of ['public', 'private', 'isolated', 'unknown']) {
-                const entries = (az.bands && az.bands[zone]) || [];
-                if (entries.length) body.append(bandEl(zone, entries));
-            }
-            box.append(body);
-            return box;
-        }
-
-        function edgeRailEl(vpc) {
-            const rail = el('div', 'rail');
-            const step = (r, fallbackIco, fallbackText) => {
-                if (r) return nodeEl(r, { aux: true });
-                const s = el('div', 'node is-external');
-                s.append(icon(fallbackIco), el('span', 'node-name', fallbackText));
-                return s;
-            };
-            const waf = (vpc.edge.waf || []).map(resolve).filter(Boolean)[0];
-            const lbs = (vpc.edge.load_balancers || []).map(resolve).filter(Boolean);
-            const tgs = (vpc.edge.target_groups || []).map(resolve).filter(Boolean);
-            const igw = resolve(vpc.edge.internet_gateway);
-
-            rail.append(step(null, 'globe-simple', 'Internet'));
-            rail.append(el('span', 'rail-arrow', '→'));
-            if (waf) { rail.append(step(waf)); rail.append(el('span', 'rail-arrow', '→')); }
-            for (const lb of lbs) { rail.append(step(lb)); rail.append(el('span', 'rail-arrow', '→')); }
-            for (const tg of tgs) rail.append(step(tg));
-            if (igw) { rail.append(el('span', 'rail-arrow', '·')); rail.append(step(igw)); }
-            return rail;
-        }
-
-        function vpcEl(vpc) {
-            const box = el('div', `vpc${vpc.is_default ? ' is-default' : ''}`);
-            box.dataset.scope = `VPC ${vpc.name} · ${vpc.cidr}`;
-
-            const head = el('div', 'vpc-head');
-            head.append(frameLabel('vpc', 'cloud', vpc.name, vpc.cidr, vpc.is_default ? 'muted' : ''));
-            if (vpc.is_default) {
-                const tag = el('span', 'fr-chip', 'VPC ติดมากับบัญชี ไม่ใช่ของโปรเจกต์นี้');
-                head.append(tag);
-            }
-            const counts = el('span', 'fr-count');
-            const nodeTotal = (vpc.azs || []).reduce((sum, az) => sum + Object.values(az.bands || {})
-                .reduce((n, entries) => n + entries.reduce((m, e) => m + (e.nodes || []).length, 0), 0), 0);
-            counts.textContent = `${(vpc.azs || []).length} AZ · ${nodeTotal} resource`;
-            head.append(counts);
-            box.append(head);
-
-            // VPC ที่ไม่ใช่ของโปรเจกต์พับเก็บไว้ ไม่ให้แย่งความสนใจจากของจริง
-            const body = el('div', 'vpc-body');
-            if (vpc.edge) body.append(edgeRailEl(vpc));
-            const azRow = el('div', 'az-row');
-            for (const az of vpc.azs || []) azRow.append(azEl(az));
-            body.append(azRow);
-
-            const sgs = (vpc.security_groups || []).map(resolve).filter(Boolean);
-            if (sgs.length) {
-                const strip = el('div', 'sg-strip');
-                strip.append(frameLabel('sg', 'lock-key', 'Security groups', 'กฎว่าใครเข้าถึงอะไรได้'));
-                const row = el('div', 'sg-row');
-                for (const sg of sgs) row.append(nodeEl(sg, { aux: true }));
-                strip.append(row);
-                body.append(strip);
-            }
-
-            if (vpc.is_default) {
-                const det = el('details', 'vpc-collapse');
-                const sum = el('summary');
-                sum.append(icon('caret-right'), document.createTextNode('ดูข้างใน'));
-                det.append(sum, body);
-                box.append(det);
-            } else {
-                box.append(body);
-            }
-            return box;
-        }
-
-        function regionEl(region) {
-            const box = el('div', 'rgn');
-            box.dataset.scope = `Region ${region.name}`;
-            box.append(frameLabel('rgn', 'globe-hemisphere-west', `Region ${region.name}`, 'พื้นที่ทางภูมิศาสตร์ที่ของทุกชิ้นด้านในตั้งอยู่'));
-            const body = el('div', 'rgn-body');
-            for (const vpc of region.vpcs || []) body.append(vpcEl(vpc));
-            box.append(body);
-            return box;
-        }
-
-        // Logical links, used by the inspector's "Connections" list. The picture itself shows
-        // containment, so these describe who talks to whom rather than being drawn as arrows.
-        function buildEdges(regions) {
-            const edges = [];
-            const push = (from, to, kind, label) => { if (from && to) edges.push({ from: { r: from }, to: { r: to }, kind, label }); };
-            for (const region of regions) {
-                for (const vpc of region.vpcs || []) {
-                    const lbs = (vpc.edge.load_balancers || []).map(resolve).filter(Boolean);
-                    const tgs = (vpc.edge.target_groups || []);
-                    const waf = (vpc.edge.waf || []).map(resolve).filter(Boolean);
-                    for (const w of waf) for (const lb of lbs) push(w, lb, 'security', 'inspects');
-                    for (const tgRaw of tgs) {
-                        const tg = resolve(tgRaw);
-                        for (const lb of lbs) push(lb, tg, 'traffic', 'forwards to');
-                        for (const m of tgRaw.members || []) push(tg, resolve(m.target_id), 'traffic', m.state);
-                    }
-                    for (const sgRaw of vpc.security_groups || []) {
-                        const sg = resolve(sgRaw);
-                        for (const id of sgRaw.attached_to || []) push(sg, resolve(id), 'security', 'guards');
-                    }
-                    for (const az of vpc.azs || []) {
-                        for (const entries of Object.values(az.bands || {})) {
-                            for (const entry of entries) {
-                                for (const n of entry.nodes || []) {
-                                    if (n.type === 'aws_nat_gateway') {
-                                        push(resolve(n), resolve(vpc.edge.internet_gateway), 'egress', 'egress');
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            return edges;
         }
 
         function renderDiagram() {
@@ -1398,33 +1494,81 @@
             empty.hidden = true;
             $('dg-controls').hidden = false;
             $('dg-hint').hidden = false;
-
+            layout = buildLayout(regions);
             world.replaceChildren();
-            world.style.width = '';
-            world.style.height = '';
             world.classList.toggle('is-plain', state.plain);
+            world.style.width = `${layout.w}px`;
+            world.style.height = `${layout.h}px`;
 
-            const canvas = el('div', 'dg-canvas');
-            for (const region of regions) canvas.append(regionEl(region));
-            world.append(canvas);
-
-            // Measure the rendered frames once so pan/zoom, fit and "reveal from the table"
-            // keep working on real pixel positions instead of a hand-computed layout.
-            const wr = world.getBoundingClientRect();
-            const s = view.s || 1;
-            const nodes = [];
-            world.querySelectorAll('[data-key]').forEach((node) => {
-                const r = state.data.resources.find((x) => x.key === node.dataset.key);
-                if (!r) return;
-                const box = node.getBoundingClientRect();
-                nodes.push({ r, el: node, x: (box.left - wr.left) / s, y: (box.top - wr.top) / s, w: box.width / s, h: box.height / s });
+            const svg = svgEl('svg', { width: layout.w, height: layout.h, 'aria-hidden': 'true' });
+            const defs = svgEl('defs', {});
+            for (const k of ['traffic', 'egress', 'security', 'provision']) {
+                const m = svgEl('marker', { id: `ar-${k}`, viewBox: '0 0 8 8', refX: 7, refY: 4, markerWidth: 7, markerHeight: 7, orient: 'auto-start-reverse' });
+                m.append(svgEl('path', { d: 'M 0 0.5 L 7.5 4 L 0 7.5 z', class: `arrow k-${k}` }));
+                defs.append(m);
+            }
+            svg.append(defs);
+            const radius = { region: 16, vpc: 14, az: 12 };
+            for (const g of [...layout.groups].sort((a, b) => a.z - b.z)) {
+                svg.append(svgEl('rect', { x: g.x, y: g.y, width: g.w, height: g.h, rx: radius[g.kind.split(' ')[0]] || 10, class: `g-rect ${g.kind.split(' ').map((c, i) => (i ? c : `is-${c}`)).join(' ')}` }));
+            }
+            const keyOf = (n) => (n && n.r ? n.r.key : '__ext');
+            layout.edges.forEach((e) => {
+                const g = edgeGeom(e);
+                e.mid = g.mid;
+                svg.append(svgEl('path', { d: g.d, class: `edge k-${e.kind}`, 'marker-end': `url(#ar-${e.kind})`, 'data-a': keyOf(e.from), 'data-b': keyOf(e.to) }));
             });
-            layout = { w: Math.max(world.scrollWidth, 1), h: Math.max(world.scrollHeight, 1), nodes, chips: [], edges: buildEdges(regions) };
+            world.append(svg);
+
+            for (const lb of layout.labels) {
+                const l = el('div', `g-label${lb.muted ? ' is-muted' : ''}`);
+                l.style.left = `${lb.x}px`; l.style.top = `${lb.y}px`;
+                l.append(icon(lb.ico), document.createTextNode(lb.title));
+                if (lb.value) l.append(el('b', null, lb.value));
+                if (lb.sub) l.append(el('span', 'g-sub', lb.sub));
+                world.append(l);
+            }
+            for (const gh of layout.ghosts) {
+                const g = el('div', 'ghost', gh.label);
+                Object.assign(g.style, { left: `${gh.x}px`, top: `${gh.y}px`, width: `${gh.w}px`, height: `${gh.h}px` });
+                world.append(g);
+            }
+            for (const c of layout.chips) {
+                const [title, , ico] = ZONE[c.zone] || ZONE.unknown;
+                const b = el(c.r ? 'button' : 'div', `sn-tag z-${c.zone}`);
+                Object.assign(b.style, { left: `${c.x}px`, top: `${c.y}px`, maxWidth: `${c.w}px`, height: `${c.h}px` });
+                b.append(icon(ico), el('span', 'sn-name', c.sn.name || c.sn.id), el('span', 'sn-cidr mono', c.sn.cidr || ''));
+                b.title = `${title} · ${c.sn.name || c.sn.id} · ${c.sn.cidr || ''}`;
+                if (c.r) {
+                    b.type = 'button';
+                    b.dataset.key = c.r.key;
+                    b.setAttribute('aria-label', `${title} ${c.sn.name || c.sn.id}, ${c.sn.cidr || ''}, ${c.sn.az || ''}`);
+                    b.addEventListener('click', () => select(c.r.key));
+                }
+                world.append(b);
+            }
+            for (const e of layout.edges) {
+                if (!e.label) continue;
+                const t = el('span', `e-label k-${e.kind}`, e.label);
+                t.style.left = `${e.mid[0]}px`; t.style.top = `${e.mid[1]}px`;
+                t.dataset.a = keyOf(e.from); t.dataset.b = keyOf(e.to);
+                world.append(t);
+            }
+            for (const n of layout.nodes) world.append(nodeEl(n));
 
             applySelection();
             sizeViewport();
             if (!view.moved || view.w !== layout.w || view.h !== layout.h) fit();
             view.w = layout.w; view.h = layout.h;
+        }
+
+        // Which frames the pointer is inside, outermost first — feeds the floating breadcrumb
+        function scopeAt(wx, wy) {
+            if (!layout) return [];
+            return layout.groups
+                .filter((g) => g.scope && wx >= g.x && wx <= g.x + g.w && wy >= g.y && wy <= g.y + g.h)
+                .sort((a, b) => a.z - b.z)
+                .map((g) => g.scope);
         }
 
         // ---------- pan / zoom ----------
@@ -1748,27 +1892,54 @@
             const icon = $('sync-aws-icon');
             const text = $('sync-aws-text');
 
+            clearTimeout(syncLabelTimer);
             btn.disabled = true;
             icon.classList.remove('ph-cloud-arrow-down');
             icon.classList.add('ph-arrows-clockwise', 'spin');
             text.textContent = "Syncing...";
 
+            // ป้ายสั้นบนปุ่ม + ข้อความเต็มให้ screen reader และ tooltip
+            let label = '';
+            let note = '';
             try {
                 const response = await fetch('/dashboard/api/force-refresh', { method: 'POST' });
-                const result = await response.json();
+                // 504 จาก ALB เป็น HTML ไม่ใช่ JSON
+                let result = {};
+                try { result = await response.json(); } catch (_) {}
 
-                if (!response.ok) {
-                    alert("AWS Sync Error: " + result.message);
+                if (response.ok) {
+                    label = 'Synced';
+                    note = 'AWS data synced.';
+                    await load(true);
+                } else if (response.status === 409) {
+                    label = 'Busy';
+                    note = result.message || 'A sync is already running.';
+                } else if (response.status === 429) {
+                    label = result.retry_after ? `Wait ${result.retry_after}s` : 'Wait';
+                    note = result.message || 'Synced recently. Try again shortly.';
+                } else if (response.status === 504) {
+                    // ALB ตัดที่ 60 วินาที แต่ Lambda ยังรันต่อจนเสร็จ ข้อมูลใหม่จะมาทาง live update เอง
+                    label = 'Still running';
+                    note = 'The sync is taking longer than usual. The page updates by itself when the new data lands.';
+                } else {
+                    label = 'Sync failed';
+                    note = 'AWS Sync Error: ' + (result.message || `the server responded with status ${response.status}.`);
                 }
             } catch (err) {
-                alert("Failed to connect to the server to sync AWS data.");
+                label = 'Sync failed';
+                note = 'Failed to connect to the server to sync AWS data.';
             } finally {
                 btn.disabled = false;
                 icon.classList.remove('ph-arrows-clockwise', 'spin');
                 icon.classList.add('ph-cloud-arrow-down');
-                text.textContent = "Sync AWS";
+                text.textContent = label || 'Sync AWS';
+                btn.title = note;
+                $('live').textContent = note;
+                clearTimeout(syncLabelTimer);
+                if (label) syncLabelTimer = setTimeout(() => { text.textContent = 'Sync AWS'; btn.title = ''; }, 4000);
             }
         }
+        let syncLabelTimer = null;
         
         $('sync-aws-btn').addEventListener('click', forceRefreshAWS);
 
@@ -1790,14 +1961,10 @@
 
         // ป้าย "ตอนนี้อยู่ในกรอบไหน" ตามเมาส์ เพื่อให้ยังรู้ตัวว่าอยู่ Region/VPC ใดตอนซูมลึก
         $('dg-viewport').addEventListener('pointermove', (ev) => {
-            const scope = ev.target.closest('[data-scope]');
             const badge = $('dg-scope');
-            if (!scope) { badge.hidden = true; return; }
-            const trail = [];
-            for (let node = scope; node; node = node.parentElement.closest('[data-scope]')) {
-                trail.unshift(node.dataset.scope);
-                if (!node.parentElement) break;
-            }
+            const rect = $('dg-viewport').getBoundingClientRect();
+            const trail = scopeAt((ev.clientX - rect.left - view.x) / view.s, (ev.clientY - rect.top - view.y) / view.s);
+            if (!trail.length) { badge.hidden = true; return; }
             badge.textContent = trail.join('  ›  ');
             badge.hidden = false;
         });
