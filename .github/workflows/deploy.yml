@@ -125,11 +125,3 @@
 
         - name: Terraform Apply
           run: terraform apply -auto-approve -var="image_tag=${{ github.sha }}"
-
-        - name: Export Output and Notify Web API
-          run: |
-            terraform output -json infrastructure_summary > currentinfra.json
-            
-            curl --fail-with-body --retry 3 --retry-delay 10 -X POST -H "Content-Type: application/json" --data-binary @currentinfra.json https://prodpai-cloud.onrender.com/api/update
-            
-            echo "✅ Sent infrastructure status to Web API successfully."

@@ -114,7 +114,6 @@ def lambda_handler(event, context):
                             {'Key': 'SecurityStatus', 'Value': 'Compromised'}
                         ]
                     )
-                    
                     print(f"Isolated and tagged instance {instance_id}")
                 else:
                     print(f"⚠️ [WARNING] Hostname '{hostname}' is not a valid AWS Instance ID.")
