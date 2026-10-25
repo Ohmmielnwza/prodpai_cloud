@@ -14,6 +14,10 @@ data "aws_ecr_repository" "app_repo" {
   name = "prodpai_cloud"
 }
 
+data "aws_ecr_repository" "dashboard_repo" {
+  name = "prodpai_dashboard"
+}
+
 # -----
 # Create Reference Instance For launch template
 # -----
@@ -156,6 +160,13 @@ resource "null_resource" "terminate_builder" {
   }
 }
 
+resource "aws_s3_object" "app_code" {
+  bucket = aws_s3_bucket.dashboard_data.bucket
+  key    = "app/dashboard_code.zip"
+  source = data.archive_file.aggregator_zip.output_path
+  etag   = filemd5(data.archive_file.aggregator_zip.output_path)
+}
+
 # =======================================================
 # 3. สร้าง EC2 Instance (Ubuntu) ใน Private Subnet
 # =======================================================
@@ -168,12 +179,12 @@ resource "aws_instance" "dashboard" {
   vpc_security_group_ids = [aws_security_group.dashboard_ec2_sg.id]
 
   # โหลด Script ของ Ubuntu
-  user_data = templatefile("${path.module}/scripts/setup_app.sh", {
-    app_py_b64     = base64encode(file("${path.module}/app/dashboard.py"))
-    index_html_b64 = base64encode(file("${path.module}/app/templates/index.html"))
-    s3_bucket      = aws_s3_bucket.dashboard_data.bucket
-    lambda_name    = aws_lambda_function.infra_aggregator.function_name
-    region         = var.aws_region
+  user_data = templatefile("${path.module}/scripts/setup_dashboard.sh", {
+    IMAGE_TAG   = var.image_tag
+    ECR_URL     = data.aws_ecr_repository.dashboard_repo.repository_url
+    S3_BUCKET   = aws_s3_bucket.dashboard_data.bucket
+    LAMBDA_NAME = aws_lambda_function.infra_aggregator.function_name
+    AWS_REGION  = var.aws_region
   })
 
   tags = { Name = "DevSecOps-Dashboard-Ubuntu" }
