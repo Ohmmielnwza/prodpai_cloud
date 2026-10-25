@@ -160,13 +160,6 @@ resource "null_resource" "terminate_builder" {
   }
 }
 
-resource "aws_s3_object" "app_code" {
-  bucket = data.aws_s3_bucket.dashboard_data.bucket
-  key    = "app/dashboard_code.zip"
-  source = data.archive_file.aggregator_zip.output_path
-  etag   = filemd5(data.archive_file.aggregator_zip.output_path)
-}
-
 # =======================================================
 # 3. สร้าง EC2 Instance (Ubuntu) ใน Private Subnet
 # =======================================================
