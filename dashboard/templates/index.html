@@ -409,6 +409,131 @@
         @media (prefers-reduced-motion: reduce) {
             *, *::before, *::after { transition: none !important; animation: none !important; }
         }
+
+        /* =========================================================
+           Nested topology — region > VPC > AZ > public/private > subnet
+           Every level gets its own border weight, tint and corner label so the
+           boundary you are inside stays readable at any zoom level.
+           ========================================================= */
+        .dg-canvas { display: flex; flex-direction: column; gap: 28px; padding: 28px; align-items: flex-start; }
+
+        .fr-label { display: inline-flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--ink-2); white-space: nowrap; }
+        .fr-label i { font-size: 14px; }
+        .fr-title { font-weight: 650; }
+        .fr-sub { font-weight: 400; letter-spacing: 0; color: var(--faint); font-size: 10.5px; }
+        .fr-label.tone-muted, .fr-label.tone-muted .fr-title { color: var(--faint); }
+        .fr-chip { font-size: 10.5px; color: var(--faint); border: 1px dashed var(--line-3); border-radius: var(--r-pill); padding: 1px 9px; }
+        .fr-count { margin-left: auto; font-size: 10.5px; color: var(--faint); font-variant-numeric: tabular-nums; }
+
+        /* Region: the outermost box, dashed so it never reads as a device */
+        .rgn { border: 2px dashed var(--region-line); border-radius: 18px; padding: 14px; background: color-mix(in srgb, var(--surface-1) 45%, transparent); position: relative; }
+        .rgn > .fr-rgn { position: absolute; top: -11px; left: 18px; background: var(--bg); padding: 0 10px; }
+        .rgn > .fr-rgn i { color: var(--accent); }
+        .rgn-body { display: flex; flex-direction: column; gap: 16px; padding-top: 6px; }
+
+        /* VPC: solid frame, the strongest boundary in the picture */
+        .vpc { border: 2px solid var(--vpc-line); border-radius: 16px; background: var(--vpc-fill); position: relative; }
+        .vpc-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+        .vpc-head .fr-vpc i { color: var(--svc-network); }
+        .vpc-body { display: flex; flex-direction: column; gap: 16px; padding: 16px; }
+        .vpc.is-default { border-style: dotted; opacity: .85; }
+        .vpc-collapse > summary { list-style: none; cursor: pointer; padding: 10px 16px; font-size: 11.5px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+        .vpc-collapse > summary::-webkit-details-marker { display: none; }
+        .vpc-collapse[open] > summary i { transform: rotate(90deg); }
+        .vpc-collapse > summary i { transition: transform var(--dur) var(--ease); }
+
+        /* Edge rail: the path traffic takes before it reaches a subnet */
+        .rail { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 12px; border: 1px solid var(--line-2); border-radius: var(--r-xl); background: color-mix(in srgb, var(--surface-2) 55%, transparent); }
+        .rail-arrow { color: var(--edge); font-size: 14px; }
+
+        .az-row { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+        .az { border: 1px dashed var(--line-3); border-radius: 14px; padding: 12px; background: color-mix(in srgb, var(--surface-1) 55%, transparent); min-width: 300px; }
+        .az > .fr-az { margin-bottom: 10px; }
+        .az > .fr-az i { color: var(--muted); }
+        .az-body { display: flex; flex-direction: column; gap: 10px; }
+
+        /* Public / private bands: colour carries the meaning, the label spells it out */
+        .band { border-radius: 12px; padding: 10px; border: 1px solid transparent; }
+        .band > .fr-band { margin-bottom: 8px; }
+        .band-body { display: flex; gap: 10px; flex-wrap: wrap; }
+        .band.z-public { background: var(--zone-public); border-color: var(--zone-public-line); }
+        .band.z-public .fr-band i, .band.z-public .fr-title { color: var(--svc-network); }
+        .band.z-private { background: var(--zone-private); border-color: var(--zone-private-line); }
+        .band.z-private .fr-band i, .band.z-private .fr-title { color: var(--svc-security); }
+        .band.z-isolated, .band.z-unknown { background: color-mix(in srgb, var(--surface-3) 50%, transparent); border-color: var(--line-2); }
+
+        .sn { border: 1px solid var(--line-2); border-radius: var(--r-xl); background: color-mix(in srgb, var(--surface-1) 80%, transparent); min-width: 268px; }
+        .sn-head { display: flex; align-items: baseline; gap: 8px; padding: 8px 12px; border-bottom: 1px dashed var(--line-2); }
+        .sn-name { font-size: 11.5px; font-weight: 600; }
+        .sn-cidr { font-size: 10.5px; color: var(--muted); }
+        .sn-az { margin-left: auto; font-size: 10px; color: var(--faint); }
+        .sn-body { display: flex; flex-direction: column; gap: 8px; padding: 10px; }
+        .sn-empty { font-size: 11px; color: var(--ghost); padding: 2px; }
+
+        .sg-strip { border-top: 1px dashed var(--line-2); padding-top: 12px; }
+        .sg-strip > .fr-sg { margin-bottom: 8px; }
+        .sg-strip > .fr-sg i { color: var(--svc-security); }
+        .sg-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+        /* Nodes sit in flow here instead of being positioned by a layout pass */
+        .dg-world .node { position: relative; left: auto; top: auto; min-width: 212px; min-height: 52px; padding: 8px 10px; }
+        .dg-world .node.is-external { min-width: 132px; }
+        .node-plain { display: none; font-size: 10.5px; line-height: 15px; color: var(--faint); margin-top: 3px; white-space: normal; }
+        .dg-world.is-plain .node-plain { display: block; }
+        .dg-world.is-plain .node { min-width: 236px; }
+
+        /* Compromised: loud on purpose — this is the one thing nobody should scroll past */
+        .node.is-compromised {
+            --svc: var(--err);
+            border-color: var(--err); border-width: 2px;
+            background: color-mix(in srgb, var(--err) 16%, var(--surface-2));
+            box-shadow: 0 0 0 4px var(--err-soft), var(--shadow-3);
+            animation: compromised-pulse 1.6s ease-in-out infinite;
+        }
+        .node.is-compromised .node-name, .node.is-compromised .node-kicker { color: var(--err); }
+        .node-flag { display: inline-flex; align-items: center; gap: 4px; font-size: 9.5px; font-weight: 700; letter-spacing: .08em; color: var(--err); border: 1px solid var(--err); border-radius: var(--r-pill); padding: 1px 7px; }
+        @keyframes compromised-pulse {
+            0%, 100% { box-shadow: 0 0 0 3px var(--err-soft), var(--shadow-2); }
+            50% { box-shadow: 0 0 0 9px color-mix(in srgb, var(--err) 8%, transparent), var(--shadow-3); }
+        }
+        @media (prefers-reduced-motion: reduce) { .node.is-compromised { animation: none; } }
+
+        /* Breadcrumb that follows the pointer, so deep zoom never loses its place */
+        .dg-scope { position: absolute; left: 14px; top: 12px; z-index: 3; pointer-events: none; font-size: 11px; font-weight: 500; color: var(--ink-2); background: color-mix(in srgb, var(--surface-1) 92%, transparent); border: 1px solid var(--line-2); border-radius: var(--r-pill); padding: 4px 12px; backdrop-filter: blur(6px); box-shadow: var(--shadow-1); }
+
+        .legend .lg-zone { border-radius: var(--r-sm); padding: 1px 8px; border: 1px solid var(--line-2); }
+        .legend .lg-zone.z-public { background: var(--zone-public); border-color: var(--zone-public-line); }
+        .legend .lg-zone.z-private { background: var(--zone-private); border-color: var(--zone-private-line); }
+        .legend .lg-zone.z-danger { background: var(--err-soft); border-color: var(--err); color: var(--err); }
+        .btn.is-on { border-color: var(--accent-line); background: var(--accent-soft); color: var(--accent-strong); }
+
+        /* ---------- cost ---------- */
+        .cost-body { padding: 16px; display: flex; flex-direction: column; gap: 18px; }
+        .cost-figures { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; }
+        .cost-fig { border: 1px solid var(--line-2); border-radius: var(--r-xl); padding: 12px 14px; background: var(--surface-2); }
+        .cost-num { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; margin-top: 2px; }
+        .cost-bars { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+        .cost-bars li { display: grid; grid-template-columns: 190px 1fr 86px; align-items: center; gap: 12px; font-size: 12px; }
+        .cost-name { color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .cost-track { height: 8px; border-radius: var(--r-pill); background: var(--surface-3); overflow: hidden; }
+        .cost-bar { display: block; height: 100%; border-radius: var(--r-pill); background: linear-gradient(90deg, var(--accent), var(--accent-strong)); }
+        .cost-val { text-align: right; color: var(--muted); }
+
+        /* ---------- incidents ---------- */
+        .inc-list { list-style: none; padding: 12px 16px 16px; display: flex; flex-direction: column; gap: 10px; }
+        .inc { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--err); border-left-width: 3px; border-radius: var(--r-xl); background: var(--err-soft); padding: 10px 12px; }
+        .inc-ico { color: var(--err); font-size: 17px; margin-top: 1px; }
+        .inc-title { font-size: 12.5px; font-weight: 600; }
+        .inc-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+        .inc-raw { font-size: 10.5px; color: var(--faint); margin-top: 4px; word-break: break-word; }
+
+        @media (max-width: 760px) {
+            .dg-canvas { padding: 14px; }
+            .az-row { flex-direction: column; }
+            .az, .sn { min-width: 0; width: 100%; }
+            .cost-bars li { grid-template-columns: 1fr 70px; }
+            .cost-track { grid-column: 1 / -1; }
+        }
     </style>
 </head>
 <body>
@@ -440,6 +565,10 @@
                     <i id="sync-aws-icon" class="ph ph-cloud-arrow-down" aria-hidden="true"></i><span id="sync-aws-text" class="btn-text">Sync AWS</span>
                 </button>
                 
+                <!-- โหมดอธิบายแบบง่าย: ใส่คำอธิบายภาษาคนทั่วไปใต้ทุกกล่องในแผนภาพ -->
+                <button id="plain-btn" type="button" class="btn" aria-pressed="false" aria-label="Toggle plain language mode">
+                    <i class="ph ph-chat-circle-text" aria-hidden="true"></i><span class="btn-text">อธิบายแบบง่าย</span>
+                </button>
                 <button id="refresh-btn" type="button" class="btn" aria-label="Refresh data">
                     <i id="refresh-icon" class="ph ph-arrows-clockwise" aria-hidden="true"></i><span class="btn-text">Refresh</span>
                 </button>
@@ -479,14 +608,18 @@
                 <div class="panel-head">
                     <h2 id="dg-title"><i class="ph ph-graph" aria-hidden="true"></i>Architecture</h2>
                     <div class="legend" aria-label="Diagram legend">
-                        <span><svg aria-hidden="true"><line x1="1" y1="4" x2="21" y2="4" class="edge k-traffic"/></svg>Traffic</span>
-                        <span><svg aria-hidden="true"><line x1="1" y1="4" x2="21" y2="4" class="edge k-egress"/></svg>Outbound</span>
-                        <span><svg aria-hidden="true"><line x1="1" y1="4" x2="21" y2="4" class="edge k-security"/></svg>Security response</span>
-                        <span><svg aria-hidden="true"><line x1="1" y1="4" x2="21" y2="4" class="edge k-provision"/></svg>Provisioning</span>
+                        <span><i class="ph ph-globe-hemisphere-west" aria-hidden="true"></i>Region</span>
+                        <span><i class="ph ph-cloud" aria-hidden="true"></i>VPC</span>
+                        <span><i class="ph ph-map-pin" aria-hidden="true"></i>Availability zone</span>
+                        <span class="lg-zone z-public">Public — เปิดสู่อินเทอร์เน็ต</span>
+                        <span class="lg-zone z-private">Private — ปิดจากภายนอก</span>
+                        <span class="lg-zone z-danger">ถูกยึด</span>
                     </div>
                 </div>
                 <div class="dg-shell">
                     <div id="dg-viewport" class="dg-viewport" role="group" aria-roledescription="diagram" aria-label="Architecture diagram">
+                        <!-- ป้ายบอกว่าตอนนี้เมาส์อยู่ในกรอบไหน แก้ปัญหา "ซูมเข้าไปแล้วหาขอบไม่เจอ" -->
+                        <div id="dg-scope" class="dg-scope" aria-live="off" hidden></div>
                         <div id="dg-world" class="dg-world"></div>
                         <div id="dg-empty" hidden></div>
                         <p class="dg-hint" id="dg-hint">Drag to pan · <kbd>Ctrl</kbd> + scroll to zoom · <kbd>0</kbd> fit</p>
@@ -499,6 +632,20 @@
                     </div>
                     <aside id="detail" class="detail" aria-label="Selected resource details" aria-live="polite"></aside>
                 </div>
+            </section>
+
+            <section class="panel" id="inc-panel" aria-labelledby="inc-title" hidden>
+                <div class="panel-head">
+                    <h2 id="inc-title"><i class="ph ph-shield-warning" aria-hidden="true"></i>เหตุการณ์ด้านความปลอดภัย</h2>
+                </div>
+                <ul id="inc-body" class="inc-list"></ul>
+            </section>
+
+            <section class="panel" id="cost-panel" aria-labelledby="cost-title" hidden>
+                <div class="panel-head">
+                    <h2 id="cost-title"><i class="ph ph-currency-dollar" aria-hidden="true"></i>ค่าใช้จ่าย</h2>
+                </div>
+                <div id="cost-body" class="cost-body"></div>
             </section>
 
             <section class="panel" aria-labelledby="inv-title">
@@ -556,7 +703,7 @@
         const typeLabel = (t) => (TYPE[t] ? TYPE[t][0] : t);
         const typeIcon = (t) => (TYPE[t] ? TYPE[t][1] : 'cube');
 
-        const state = { data: null, version: null, busy: false, again: false, selected: null, query: '', cat: '', lastOk: null, failed: false };
+        const state = { data: null, version: null, busy: false, again: false, selected: null, query: '', cat: '', lastOk: null, failed: false, plain: false };
 
         // ---------- data contract ----------
         const obj = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
@@ -581,7 +728,11 @@
                         assumed: r.status_assumed === true,
                         health: HEALTH.includes(r.health) ? r.health : 'unknown',
                         region: text(r.region), az: text(r.az),
-                        ips: (Array.isArray(r.ips) ? r.ips : []).map((ip) => text(ip)).filter(Boolean),
+                        zone_type: text(r.zone_type),
+                        compromised: r.compromised === true || /compromis/i.test(text(r.status)),
+                        // Lambda ส่ง private_ip/public_ip มาแยกกัน ส่วนรูปแบบเดิมส่งเป็น ips[] รับทั้งสองแบบ
+                        ips: (Array.isArray(r.ips) ? r.ips : [r.private_ip, r.public_ip])
+                            .map((ip) => text(ip)).filter(Boolean),
                         endpoint: text(r.endpoint),
                         tags: Object.fromEntries(Object.entries(obj(r.tags)).map(([k, v]) => [k, text(v)])),
                         spec: text(r.spec),
@@ -595,7 +746,17 @@
                 version: text(d.version, String(Date.now())),
                 message: text(d.message), detail: text(d.detail), file: text(d.file),
                 applied_at: text(d.applied_at), received_at: text(d.received_at), storage: text(d.storage),
-                meta: { project: text(m.project), environment: text(m.environment), region: text(m.region) },
+                // ชื่อโปรเจกต์/region อยู่ระดับบนสุดของ payload ที่ Lambda ส่งมา ของเดิมอยู่ใต้ meta
+                meta: {
+                    project: text(d.project) || text(m.project),
+                    environment: text(d.environment) || text(m.environment),
+                    region: text(d.region) || text(m.region)
+                },
+                // ชั้นข้อมูลใหม่ ส่งต่อตามที่ Lambda จัดมาให้ ไม่แปลงซ้ำ
+                topology: obj(d.topology),
+                tgHealth: obj(d.health),
+                cost: obj(d.cost),
+                incidents: Array.isArray(d.incidents) ? d.incidents : [],
                 keys: new Set((Array.isArray(d.keys) ? d.keys : []).map((k) => text(k))),
                 summary: {
                     total: num(s.total), cost: num(s.monthly_cost),
@@ -721,7 +882,7 @@
 
         // ---------- render ----------
         function render() {
-            for (const fn of [renderHeader, renderBanner, renderCards, renderDiagram, renderDetail, renderTable, renderRaw]) {
+            for (const fn of [renderHeader, renderBanner, renderCards, renderCost, renderIncidents, renderDiagram, renderDetail, renderTable, renderRaw]) {
                 try { fn(); } catch (err) { console.error(err); }
             }
         }
@@ -819,39 +980,128 @@
                 });
                 return;
             }
-            const h = d.summary.health;
+            // "Healthy" ตั้งใจนับเฉพาะสมาชิกของ target group เท่านั้น (เครื่องที่ ASG สร้าง + dashboard)
+            // ของ infra อย่าง NAT / IGW / security group ไม่ใช่สิ่งที่ ALB ตรวจสุขภาพ จึงไม่ควรปนในตัวเลขนี้
+            const tg = d.tgHealth || {};
+            const counted = Array.isArray(tg.counted_from) ? tg.counted_from : [];
+            const totalTargets = num(tg.total_targets);
+            const compromised = Array.isArray(tg.compromised) ? tg.compromised : [];
+
             card('Total resources', ICONS[0], has ? String(d.summary.total) : null, {
                 primary: true, card: 'accent',
                 foot: has ? `${new Set(d.resources.map((r) => r.category)).size} categories · ${d.meta.region || 'region not reported'}` : 'No infrastructure data'
             });
-            card('Healthy', ICONS[1], has ? String(h.healthy) : null, {
-                tone: has && h.healthy ? 'is-ok' : '', card: has && h.healthy ? 'ok' : 'neutral',
-                foot: has ? (h.unverified ? `${h.unverified} not verified · excluded` : 'All statuses reported') : ''
+
+            const healthyValue = totalTargets ? (() => {
+                const frag = document.createDocumentFragment();
+                frag.append(document.createTextNode(String(num(tg.healthy))), el('small', null, ` / ${totalTargets}`));
+                return frag;
+            })() : null;
+            card('Healthy targets', ICONS[1], healthyValue, {
+                tone: totalTargets && num(tg.healthy) === totalTargets ? 'is-ok' : num(tg.unhealthy) ? 'is-err' : '',
+                card: !totalTargets ? 'neutral' : num(tg.healthy) === totalTargets ? 'ok' : 'err',
+                foot: counted.length ? `นับจาก ${counted.join(' + ')}` : 'ยังไม่มี target group รายงานเข้ามา',
+                naTitle: 'ยังไม่มีสมาชิกใน target group'
             });
-            card('Warnings', ICONS[2], has ? String(h.warning) : null, {
-                tone: has && h.warning ? 'is-warn' : '', card: h.error ? 'err' : has && h.warning ? 'warn' : 'neutral',
-                foot: has ? (h.error ? `${h.error} error${h.error > 1 ? 's' : ''}` : 'No errors') : '',
-                footTone: h.error ? 'is-err' : ''
+
+            card('Compromised', 'warning-octagon', has ? String(compromised.length) : null, {
+                tone: compromised.length ? 'is-err' : 'is-ok',
+                card: compromised.length ? 'err' : 'ok',
+                foot: compromised.length
+                    ? `${compromised.join(', ')} · ตัดออกจาก ASG และ snapshot ไว้แล้ว`
+                    : 'ไม่มีเครื่องที่ถูกยึด'
             });
-            const reported = d.keys.has('ec2_instances');
+
             const members = d.resources.filter(isMember);
             const running = members.filter((r) => r.status === 'running').length;
-            let asgValue = null, asgFoot = has ? 'Not in Terraform output' : '';
-            if (has && reported) {
+            const asgValue = members.length ? (() => {
                 const frag = document.createDocumentFragment();
                 frag.append(document.createTextNode(String(running)), el('small', null, ` / ${members.length}`));
-                asgValue = frag;
-                const other = members.length - running;
-                asgFoot = !members.length ? 'No instances reported' : other ? `${other} not running` : 'All running';
-            }
-            const asgTone = has && reported && members.length ? (running === members.length ? 'ok' : 'warn') : 'neutral';
-            card('ASG instances running', ICONS[3], asgValue, {
+                return frag;
+            })() : null;
+            const asgTone = members.length ? (running === members.length ? 'ok' : 'warn') : 'neutral';
+            card('EC2 running', ICONS[3], asgValue, {
                 tone: asgTone === 'neutral' ? '' : `is-${asgTone}`, card: asgTone,
-                foot: asgFoot, naTitle: 'Not reported by the Terraform output'
+                foot: !members.length ? 'ยังไม่พบเครื่อง' : running === members.length ? 'ทุกเครื่องทำงานอยู่' : `${members.length - running} เครื่องไม่ได้รัน`
             });
-            card('Est. monthly cost', ICONS[4], has ? `$${d.summary.cost.toFixed(2)}` : null, {
-                foot: has ? 'Estimate · on-demand list prices' : ''
+
+            // ค่าใช้จ่าย: ยอดที่ใช้ไปแล้วเดือนนี้ ถ้าดึง Cost Explorer ไม่ได้จะตกมาใช้ค่าประเมินแทน
+            const cost = d.cost || {};
+            const mtd = typeof cost.month_to_date === 'number' ? cost.month_to_date : null;
+            const projected = typeof cost.projected_end_of_month === 'number' ? cost.projected_end_of_month : null;
+            const costValue = mtd !== null ? `$${mtd.toFixed(2)}`
+                : typeof cost.run_rate_monthly === 'number' ? `$${cost.run_rate_monthly.toFixed(2)}` : null;
+            card(mtd !== null ? 'ใช้ไปแล้วเดือนนี้' : 'ค่าใช้จ่ายต่อเดือน (ประเมิน)', ICONS[4], costValue, {
+                foot: projected !== null
+                    ? `คาดว่าสิ้นเดือน $${projected.toFixed(2)} · เหลืออีก ${num(cost.days_left_in_month)} วัน`
+                    : 'ยังไม่มีข้อมูลค่าใช้จ่าย'
             });
+        }
+
+        // ---------- cost ----------
+        function renderCost() {
+            const panel = $('cost-panel'), box = $('cost-body');
+            const cost = (state.data && state.data.cost) || {};
+            const breakdown = cost.breakdown_monthly || {};
+            if (!Object.keys(breakdown).length) { panel.hidden = true; return; }
+            panel.hidden = false;
+            box.replaceChildren();
+
+            const figures = el('div', 'cost-figures');
+            const figure = (label, value, hint) => {
+                const f = el('div', 'cost-fig');
+                f.append(el('p', 'c-label', label), el('p', 'cost-num num', value));
+                if (hint) f.append(el('p', 'c-foot', hint));
+                figures.append(f);
+            };
+            const money = (v) => (typeof v === 'number' ? `$${v.toFixed(2)}` : '—');
+            figure('ใช้ไปแล้วเดือนนี้', money(cost.month_to_date),
+                cost.source === 'cost_explorer' ? 'จาก Cost Explorer ของจริง' : 'Cost Explorer เรียกไม่ได้');
+            figure('อัตราปัจจุบันต่อเดือน', money(cost.run_rate_monthly), 'คิดจาก resource ที่เปิดอยู่ตอนนี้');
+            figure('คาดการณ์สิ้นเดือน', money(cost.projected_end_of_month), `เหลืออีก ${num(cost.days_left_in_month)} วัน`);
+            figure('อีก 30 วันข้างหน้า', money(cost.projected_next_30_days), 'ถ้าไม่เพิ่ม-ลด resource');
+            box.append(figures);
+
+            const rows = Object.entries(breakdown).sort((a, b) => b[1] - a[1]);
+            const max = Math.max(...rows.map(([, v]) => v), 1);
+            const list = el('ul', 'cost-bars');
+            for (const [service, value] of rows) {
+                const li = el('li');
+                li.append(el('span', 'cost-name', service));
+                const track = el('span', 'cost-track');
+                const bar = el('span', 'cost-bar');
+                bar.style.width = `${Math.max((value / max) * 100, 1.5)}%`;
+                track.append(bar);
+                li.append(track, el('span', 'cost-val num', money(value)));
+                list.append(li);
+            }
+            box.append(list);
+            box.append(el('p', 't-foot', cost.note || ''));
+        }
+
+        // ---------- incidents ----------
+        function renderIncidents() {
+            const panel = $('inc-panel'), box = $('inc-body');
+            const items = (state.data && state.data.incidents) || [];
+            if (!items.length) { panel.hidden = true; return; }
+            panel.hidden = false;
+            box.replaceChildren();
+            for (const inc of items) {
+                const li = el('li', 'inc');
+                li.append(icon('warning-octagon', 'inc-ico'));
+                const body = el('div');
+                body.append(el('p', 'inc-title', `${inc.instance_id} · ${inc.rule || 'ตรวจพบพฤติกรรมผิดปกติ'}`));
+                const bits = [
+                    inc.detected_at ? fmtTime(parseTime(inc.detected_at)) : '',
+                    inc.detached_from_asg ? `ถอดออกจาก ${inc.detached_from_asg}` : '',
+                    (inc.snapshots || []).length ? `snapshot ${inc.snapshots.join(', ')}` : '',
+                    inc.isolated_sg ? `ย้ายเข้า ${inc.isolated_sg}` : ''
+                ].filter(Boolean);
+                body.append(el('p', 'inc-sub', bits.join(' · ')));
+                if (inc.output) body.append(el('p', 'inc-raw mono', inc.output));
+                li.append(body);
+                box.append(li);
+            }
         }
 
         function renderRaw() {
@@ -902,275 +1152,279 @@
             renderCards();
         }
 
-        // ---------- diagram: layout ----------
-        const G = { W: 200, H: 56, ec2W: 176, sgW: 176, gap: 16, col: 240, gutter: 184, pad: 24 };
-
-        function buildLayout(resources) {
-            const used = new Set();
-            const pick = (pred) => { const r = resources.find((x) => !used.has(x) && pred(x)); if (r) used.add(r); return r || null; };
-            const pickAll = (pred) => resources.filter((x) => !used.has(x) && pred(x)).map((r) => { used.add(r); return r; });
-            const is = (t) => (r) => r.type === t;
-            const quarantine = (r) => /quarantin|isolat/i.test(r.name);
-
-            const vpc = pick(is('aws_vpc')), igw = pick(is('aws_internet_gateway')), waf = pick(is('aws_wafv2_web_acl'));
-            const lb = pick(is('aws_lb')), tg = pick(is('aws_lb_target_group'));
-            const asg = pick(is('aws_autoscaling_group')), lt = pick(is('aws_launch_template'));
-            const nat = pick(is('aws_nat_gateway'));
-            const subnets = pickAll(is('aws_subnet'));
-            const pubSn = subnets.filter((s) => s.tags.Tier === 'public'), privSn = subnets.filter((s) => s.tags.Tier !== 'public');
-            const builders = pickAll((r) => r.type === 'aws_instance' && isBuilder(r));
-            const members = pickAll(is('aws_instance'));
-            const sgs = pickAll(is('aws_security_group')).sort((a, b) => quarantine(a) - quarantine(b));
-            const logs = pick(is('aws_cloudwatch_log_group')), fn = pick(is('aws_lambda_function'));
-            const others = resources.filter((r) => !used.has(r));
-
-            const { W, H } = G;
-            const L = { nodes: [], groups: [], labels: [], chips: [], ghosts: [], edges: [], w: 0, h: 0 };
-            const add = (r, cx, y, w = W, extra = {}) => { const n = { r, x: cx - w / 2, y, w, h: H, ...extra }; L.nodes.push(n); return n; };
-            const byR = new Map();
-            const reg = (n) => { if (n && n.r) byR.set(n.r, n); return n; };
-
-            const slots = Math.max(members.length, 1);
-            const ec2Row = slots * G.ec2W + (slots - 1) * G.gap;
-            const asgW = ec2Row + 32;
-            const vpcL = G.pad, bandL = vpcL + G.pad, contentL = bandL + G.gutter;
-            let mx = contentL + Math.max(W, asgW) / 2;
-            if (nat) mx = Math.max(mx, contentL + W + 40 + W / 2);
-            const natX = mx - G.col;
-            const rx = Math.max(mx + 2 * G.col, mx + Math.max(W, asgW) / 2 + 56 + W / 2);
-            const chipsH = (list) => 40 + list.length * 34 + 6;
-
-            const internet = { r: null, x: mx - 70, y: 0, w: 140, h: 44, external: true };
-            L.nodes.push(internet);
-            const regionT = internet.h + 40;
-            const wafY = regionT + 44;
-            const vpcT = waf ? wafY + H + 36 : regionT + 60;
-            const nWaf = waf ? reg(add(waf, mx + G.col, wafY)) : null;
-            const nIgw = igw ? reg(add(igw, mx, vpcT - H / 2)) : null;
-
-            const pubT = vpcT + H / 2 + 24;
-            const pubH = Math.max(H + 40, chipsH(pubSn));
-            const pubY = pubT + (pubH - H) / 2;
-            const nLb = lb ? reg(add(lb, mx, pubY)) : null;
-            const nNat = nat ? reg(add(nat, natX, pubY)) : null;
-            const nBuilders = builders.map((r, i) => reg(add(r, rx + i * G.col, pubY, W, { aux: true })));
-
-            const tgY = pubT + pubH + 36;
-            const nTg = tg ? reg(add(tg, mx, tgY)) : null;
-            const nLt = lt ? reg(add(lt, rx, tgY)) : null;
-
-            const privT = tgY + H + 36;
-            const asgH = 16 + H + 12 + 32;
-            const hasCompute = asg || members.length;
-            const privH = Math.max(hasCompute ? asgH + 32 : H + 40, chipsH(privSn));
-            const asgBox = { x: mx - asgW / 2, y: privT + (privH - asgH) / 2, w: asgW, h: asgH };
-            const ec2Y = asgBox.y + 16;
-            const nMembers = members.map((r, i) => reg(add(r, asgBox.x + 16 + G.ec2W / 2 + i * (G.ec2W + G.gap), ec2Y, G.ec2W, { compact: true })));
-            if (asg) {
-                const n = reg({ r: asg, x: asgBox.x, y: asgBox.y + asgBox.h - 32, w: asgBox.w, h: 32, strip: true });
-                L.nodes.push(n);
-                L.groups.push({ ...asgBox, kind: 'asg' });
-                if (!members.length) L.ghosts.push({ x: asgBox.x + 16, y: ec2Y, w: G.ec2W, h: H, label: 'No instances reported' });
-            }
-            const privB = privT + privH;
-
-            const sgT = privB + 28;
-            const nSgs = sgs.map((r, i) => reg(add(r, contentL + G.sgW / 2 + i * (G.sgW + G.gap), sgT, G.sgW, { compact: true })));
-
-            const rights = L.nodes.filter((n) => !n.external && n !== nWaf).map((n) => n.x + n.w).concat([asg ? asgBox.x + asgBox.w : 0]);
-            const bandR = Math.max(...rights, contentL + W) + 24;
-            const vpcB = (sgs.length ? sgT + H : privB) + G.pad;
-            const vpcR = bandR + G.pad;
-            if (vpc || subnets.length) L.groups.push({ x: vpcL, y: vpcT, w: vpcR - vpcL, h: vpcB - vpcT, kind: 'vpc' });
-            if (vpc) L.labels.push({ x: vpcL + 12, y: vpcT + 10, ico: 'cloud', title: 'VPC', value: `${vpc.name} · ${vpc.spec}`.replace(/ · $/, ''), r: vpc });
-            const band = (t, h, title, list, zone) => {
-                L.groups.push({ x: bandL, y: t, w: bandR - bandL, h, kind: `band is-${zone}` });
-                L.labels.push({ x: bandL + 12, y: t + 12, ico: zone === 'public' ? 'globe-simple' : 'lock-simple', title, zone });
-                list.forEach((s, i) => L.chips.push({ r: s, x: bandL + 12, y: t + 38 + i * 34, w: G.gutter - 28, h: 28 }));
-            };
-            band(pubT, pubH, 'Public subnets', pubSn, 'public');
-            band(privT, privH, 'Private subnets', privSn, 'private');
-            if (sgs.length) L.labels.push({ x: bandL + 12, y: sgT + H / 2 - 8, ico: 'lock-key', title: 'Security groups' });
-
-            const mcx = vpcR + 64 + W / 2;
-            let my = ec2Y;
-            const nLogs = logs ? reg(add(logs, mcx, my)) : null;
-            if (logs) my += H + 52;
-            const nFn = fn ? reg(add(fn, mcx, sgs.length ? Math.max(sgT, my) : my)) : null;
-            if (fn) my = nFn.y + H + 32;
-            const nOthers = others.map((r, i) => reg(add(r, mcx, (nLogs || nFn ? my : privT) + i * (H + 16))));
-            if (others.length) L.labels.push({ x: mcx - W / 2, y: nOthers[0].y - 22, ico: 'cube', title: 'Other resources' });
-            const hasColumn = logs || fn || others.length;
-            const regionR = (hasColumn ? mcx + W / 2 : vpcR) + 24;
-            const contentB = Math.max(vpcB, ...L.nodes.map((n) => n.y + n.h));
-            const regionB = contentB + 24;
-            L.groups.unshift({ x: 0, y: regionT, w: regionR, h: regionB - regionT, kind: 'region' });
-            const region = (state.data && state.data.meta.region) || '';
-            L.labels.push({ x: 12, y: regionT + 12, ico: 'globe-hemisphere-west', title: 'AWS region', value: region });
-            L.w = regionR; L.h = regionB;
-
-            const E = (from, fs, to, ts, kind, label, opt = {}) => { if (from && to) L.edges.push({ from, fs, to, ts, kind, label, ...opt }); };
-            const chain = [internet, nIgw, nLb, nTg].filter(Boolean);
-            for (let i = 1; i < chain.length; i++) E(chain[i - 1], 'b', chain[i], 't', 'traffic');
-            const last = chain[chain.length - 1];
-            if (chain.length > 1 || nLb) nMembers.forEach((n) => { if (n.r.health !== 'inactive') E(last, 'b', n, 't', 'traffic'); });
-            const computeBox = asg ? { x: asgBox.x, y: asgBox.y, w: asgBox.w, h: asgBox.h } : nMembers[0];
-            const computeNode = asg ? byR.get(asg) : nMembers[0];
-            if (nNat && computeBox) {
-                L.edges.push({ from: computeNode, fs: 't', fp: [computeBox.x + 28, computeBox.y], to: nNat, ts: 'b', kind: 'egress', label: 'outbound' });
-                E(nNat, 't', nIgw, 'l', 'egress');
-            }
-            E(nWaf, 'b', nLb, 'r', 'security', 'inspects');
-            if (computeBox && nLogs) L.edges.push({ from: computeNode, fs: 'r', fp: [computeBox.x + computeBox.w, computeBox.y + (asg ? 16 + H / 2 : H / 2)], to: nLogs, ts: 'l', kind: 'security', label: 'Falco alerts' });
-            E(nLogs, 'b', nFn, 't', 'security', 'critical');
-            const nQuar = nSgs.find((n) => quarantine(n.r));
-            E(nFn, 'l', nQuar, 'r', 'security', 'isolates');
-            nBuilders.forEach((b) => E(b, 'b', nLt, 't', 'provision', 'AMI'));
-            if (nLt && asg) L.edges.push({ from: nLt, fs: 'b', to: computeNode, ts: 't', tp: [asgBox.x + asgBox.w - 28, asgBox.y], kind: 'provision', label: 'launches' });
-            return L;
-        }
-
-        // ---------- diagram: geometry ----------
-        const NORMAL = { t: [0, -1], b: [0, 1], l: [-1, 0], r: [1, 0] };
-        function anchor(n, side) {
-            if (side === 't') return [n.x + n.w / 2, n.y];
-            if (side === 'b') return [n.x + n.w / 2, n.y + n.h];
-            if (side === 'l') return [n.x, n.y + n.h / 2];
-            return [n.x + n.w, n.y + n.h / 2];
-        }
-        function edgeGeom(e) {
-            const p1 = e.fp || anchor(e.from, e.fs), p2 = e.tp || anchor(e.to, e.ts);
-            const dist = Math.hypot(p2[0] - p1[0], p2[1] - p1[1]);
-            const k = Math.min(Math.max(dist * 0.42, 24), 120);
-            const n1 = NORMAL[e.fs], n2 = NORMAL[e.ts];
-            const c1 = [p1[0] + n1[0] * k, p1[1] + n1[1] * k];
-            const c2 = [p2[0] + n2[0] * k, p2[1] + n2[1] * k];
-            const mid = [0, 1].map((j) => 0.125 * p1[j] + 0.375 * c1[j] + 0.375 * c2[j] + 0.125 * p2[j]);
-            return { d: `M ${p1[0]} ${p1[1]} C ${c1[0]} ${c1[1]}, ${c2[0]} ${c2[1]}, ${p2[0]} ${p2[1]}`, mid };
-        }
-
-        // ---------- diagram: render ----------
+        // ---------- diagram: nested layout ----------
+        // The aggregator sends a nested shape, so the diagram mirrors it one level at a time:
+        // region -> VPC -> availability zone -> public/private band -> subnet -> node.
+        // Frames are plain DOM in flow, which keeps every border exactly where the data says
+        // it is; pan/zoom still works because the whole world is one transformed element.
         const view = { s: 1, x: 0, y: 0, w: 0, h: 0, moved: false };
         let layout = null;
-        const SVGNS = 'http://www.w3.org/2000/svg';
-        const svgEl = (tag, attrs) => { const n = document.createElementNS(SVGNS, tag); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); return n; };
-
-        function nodeLabel(n) {
-            const r = n.r;
-            if (isMember(r)) return { kicker: 'EC2 instance', name: r.id, sub: [statusWord(r), r.ips[0]].filter(Boolean).join(' · ') };
-            if (isBuilder(r)) return { kicker: 'AMI builder', name: r.id, sub: statusWord(r) };
-            if (r.type === 'aws_security_group') return { kicker: 'Security group', name: r.name, sub: r.id };
-            if (r.type === 'aws_lb') return { kicker: 'Load balancer', name: r.name, sub: r.spec };
-            if (r.type === 'aws_lambda_function') return { kicker: 'Lambda', name: r.name, sub: r.spec };
-            if (r.type === 'aws_wafv2_web_acl') return { kicker: 'WAF web ACL', name: r.name, sub: r.spec };
-            if (r.type === 'aws_nat_gateway') return { kicker: 'NAT gateway', name: r.name, sub: r.ips.length ? r.ips[r.ips.length - 1] : '' };
-            if (r.type === 'aws_lb_target_group') return { kicker: 'Target group', name: r.name, sub: r.spec };
-            if (r.type === 'aws_cloudwatch_log_group') return { kicker: 'CloudWatch logs', name: r.name, sub: 'Log group' };
-            return { kicker: typeLabel(r.type), name: r.name, sub: r.spec || r.id };
-        }
         const svcClass = (r) => `svc-${(r.category || 'other').toLowerCase()}`;
 
+        const ZONE = {
+            public: ['Public', 'ออกและรับจากอินเทอร์เน็ตได้', 'globe-hemisphere-west'],
+            private: ['Private', 'เข้าได้เฉพาะจากในวง ไม่เปิดสู่อินเทอร์เน็ต', 'lock-key'],
+            isolated: ['Isolated', 'ไม่มีทางออกอินเทอร์เน็ตเลย', 'prohibit'],
+            unknown: ['Unclassified', 'อ่าน route table ไม่ได้ จึงยังบอกไม่ได้ว่าเป็นโซนไหน', 'question']
+        };
+
+        // คำอธิบายภาษาคนทั่วไป สำหรับโหมด "อธิบายแบบง่าย"
+        const PLAIN = {
+            aws_instance: 'เครื่องเซิร์ฟเวอร์ที่รันเว็บของเราอยู่',
+            aws_lb: 'ตัวกระจายงาน รับคนเข้าเว็บแล้วแบ่งไปให้เครื่องหลังบ้าน',
+            aws_lb_target_group: 'รายชื่อเครื่องที่ตัวกระจายงานจะส่งงานไปให้ พร้อมผลตรวจสุขภาพ',
+            aws_nat_gateway: 'ประตูขาออก ให้เครื่องในวงในออกเน็ตได้ แต่คนข้างนอกเข้ามาไม่ได้',
+            aws_internet_gateway: 'ประตูเชื่อมระหว่างวงเครือข่ายของเรากับอินเทอร์เน็ต',
+            aws_security_group: 'กฎว่าใครคุยกับเครื่องนี้ได้บ้าง เปรียบเหมือนยามหน้าประตู',
+            aws_wafv2_web_acl: 'ด่านกรองคำขอที่น่าสงสัยก่อนถึงเว็บ เช่น ยิงถี่ผิดปกติ',
+            aws_autoscaling_group: 'คนคุมจำนวนเครื่อง เครื่องตายก็ปั้นใหม่ คนเยอะก็เพิ่มให้',
+            aws_subnet: 'ย่านย่อยในวงเครือข่าย ใช้แยกว่าอะไรเปิดสู่ภายนอกได้บ้าง',
+            aws_vpc: 'วงเครือข่ายส่วนตัวของเราบน AWS',
+            aws_ebs_volume: 'ฮาร์ดดิสก์ของเครื่อง',
+            aws_ebs_snapshot: 'สำเนาฮาร์ดดิสก์ที่เก็บไว้เป็นหลักฐานตอนเครื่องโดนยึด'
+        };
+
+        function nodeLabel(r) {
+            if (isMember(r)) return { kicker: 'EC2 instance', name: r.id, sub: [statusWord(r), r.ips[0]].filter(Boolean).join(' · ') };
+            if (isBuilder(r)) return { kicker: 'AMI builder', name: r.id, sub: statusWord(r) };
+            if (r.type === 'aws_security_group') return { kicker: 'Security group', name: r.name, sub: r.spec || r.id };
+            if (r.type === 'aws_nat_gateway') return { kicker: 'NAT gateway', name: r.name, sub: r.ips[0] || '' };
+            return { kicker: typeLabel(r.type), name: r.name, sub: r.spec || r.id };
+        }
+
+        // Resources arrive twice: once nested inside the topology and once in the flat list the
+        // table uses. The flat copy is the one that carries `key`, so every node resolves through
+        // it — that is what keeps selection, the table and the inspector pointing at one object.
+        function resolve(raw) {
+            if (!raw || !state.data) return null;
+            const id = typeof raw === 'string' ? raw : raw.id;
+            return state.data.resources.find((r) => r.id === id) || null;
+        }
+
+        function nodeEl(r, opts = {}) {
+            const b = el('button', `node ${svcClass(r)}`);
+            b.type = 'button';
+            if (opts.aux) b.classList.add('is-aux');
+            if (r.health === 'inactive') b.classList.add('is-inactive');
+            // 🚨 เครื่องที่โดนยึดต้องเห็นชัดที่สุดในหน้า: กรอบแดง พื้นแดง และไฟกระพริบ
+            if (r.health === 'error' || /compromis/i.test(r.status)) b.classList.add('is-compromised');
+
+            const ic = el('span', 'node-ico');
+            ic.append(icon(isBuilder(r) ? 'wrench' : typeIcon(r.type)));
+            const lbl = nodeLabel(r);
+            const txt = el('span', 'node-txt');
+            txt.append(el('span', 'node-kicker', lbl.kicker), el('span', `node-name${isMember(r) ? ' mono' : ''}`, lbl.name));
+            if (lbl.sub) txt.append(el('span', 'node-sub', lbl.sub));
+            if (PLAIN[r.type]) txt.append(el('span', 'node-plain', PLAIN[r.type]));
+            b.append(ic, txt, statusDot(r));
+
+            if (b.classList.contains('is-compromised')) {
+                const flag = el('span', 'node-flag');
+                flag.append(icon('warning-octagon'), document.createTextNode('ISOLATED'));
+                b.append(flag);
+            }
+
+            b.dataset.key = r.key;
+            b.title = `${r.name} (${typeLabel(r.type)})`;
+            b.setAttribute('aria-label', `${r.name}, ${typeLabel(r.type)}, status ${r.status}`);
+            b.addEventListener('click', () => select(r.key));
+            return b;
+        }
+
+        function frameLabel(cls, ico, title, sub, tone) {
+            const l = el('div', `fr-label fr-${cls}${tone ? ' tone-' + tone : ''}`);
+            l.append(icon(ico), el('span', 'fr-title', title));
+            if (sub) l.append(el('span', 'fr-sub', sub));
+            return l;
+        }
+
+        function subnetEl(entry) {
+            const sn = entry.subnet;
+            const box = el('div', 'sn');
+            const head = el('div', 'sn-head');
+            head.append(el('span', 'sn-name', sn.name), el('span', 'sn-cidr mono', sn.cidr));
+            if (sn.az) head.append(el('span', 'sn-az', sn.az));
+            box.append(head);
+
+            const body = el('div', 'sn-body');
+            const nodes = (entry.nodes || []).map(resolve).filter(Boolean);
+            if (!nodes.length) body.append(el('p', 'sn-empty', 'ยังไม่มี resource ในย่านนี้'));
+            for (const r of nodes) body.append(nodeEl(r));
+            box.append(body);
+            return box;
+        }
+
+        function bandEl(zone, entries) {
+            const [title, hint, ico] = ZONE[zone] || ZONE.unknown;
+            const band = el('div', `band z-${zone}`);
+            band.append(frameLabel('band', ico, title, hint));
+            const row = el('div', 'band-body');
+            for (const entry of entries) row.append(subnetEl(entry));
+            band.append(row);
+            return band;
+        }
+
+        function azEl(az) {
+            const box = el('div', 'az');
+            box.append(frameLabel('az', 'map-pin', `Availability Zone ${az.id}`, 'ศูนย์ข้อมูลคนละตึก ของเสียพร้อมกันได้ยาก'));
+            const body = el('div', 'az-body');
+            // เรียงให้ public อยู่บนเสมอ ภาพจะได้อ่านจากบน (ใกล้อินเทอร์เน็ต) ลงล่าง (ลึกที่สุด)
+            for (const zone of ['public', 'private', 'isolated', 'unknown']) {
+                const entries = (az.bands && az.bands[zone]) || [];
+                if (entries.length) body.append(bandEl(zone, entries));
+            }
+            box.append(body);
+            return box;
+        }
+
+        function edgeRailEl(vpc) {
+            const rail = el('div', 'rail');
+            const step = (r, fallbackIco, fallbackText) => {
+                if (r) return nodeEl(r, { aux: true });
+                const s = el('div', 'node is-external');
+                s.append(icon(fallbackIco), el('span', 'node-name', fallbackText));
+                return s;
+            };
+            const waf = (vpc.edge.waf || []).map(resolve).filter(Boolean)[0];
+            const lbs = (vpc.edge.load_balancers || []).map(resolve).filter(Boolean);
+            const tgs = (vpc.edge.target_groups || []).map(resolve).filter(Boolean);
+            const igw = resolve(vpc.edge.internet_gateway);
+
+            rail.append(step(null, 'globe-simple', 'Internet'));
+            rail.append(el('span', 'rail-arrow', '→'));
+            if (waf) { rail.append(step(waf)); rail.append(el('span', 'rail-arrow', '→')); }
+            for (const lb of lbs) { rail.append(step(lb)); rail.append(el('span', 'rail-arrow', '→')); }
+            for (const tg of tgs) rail.append(step(tg));
+            if (igw) { rail.append(el('span', 'rail-arrow', '·')); rail.append(step(igw)); }
+            return rail;
+        }
+
+        function vpcEl(vpc) {
+            const box = el('div', `vpc${vpc.is_default ? ' is-default' : ''}`);
+            box.dataset.scope = `VPC ${vpc.name} · ${vpc.cidr}`;
+
+            const head = el('div', 'vpc-head');
+            head.append(frameLabel('vpc', 'cloud', vpc.name, vpc.cidr, vpc.is_default ? 'muted' : ''));
+            if (vpc.is_default) {
+                const tag = el('span', 'fr-chip', 'VPC ติดมากับบัญชี ไม่ใช่ของโปรเจกต์นี้');
+                head.append(tag);
+            }
+            const counts = el('span', 'fr-count');
+            const nodeTotal = (vpc.azs || []).reduce((sum, az) => sum + Object.values(az.bands || {})
+                .reduce((n, entries) => n + entries.reduce((m, e) => m + (e.nodes || []).length, 0), 0), 0);
+            counts.textContent = `${(vpc.azs || []).length} AZ · ${nodeTotal} resource`;
+            head.append(counts);
+            box.append(head);
+
+            // VPC ที่ไม่ใช่ของโปรเจกต์พับเก็บไว้ ไม่ให้แย่งความสนใจจากของจริง
+            const body = el('div', 'vpc-body');
+            if (vpc.edge) body.append(edgeRailEl(vpc));
+            const azRow = el('div', 'az-row');
+            for (const az of vpc.azs || []) azRow.append(azEl(az));
+            body.append(azRow);
+
+            const sgs = (vpc.security_groups || []).map(resolve).filter(Boolean);
+            if (sgs.length) {
+                const strip = el('div', 'sg-strip');
+                strip.append(frameLabel('sg', 'lock-key', 'Security groups', 'กฎว่าใครเข้าถึงอะไรได้'));
+                const row = el('div', 'sg-row');
+                for (const sg of sgs) row.append(nodeEl(sg, { aux: true }));
+                strip.append(row);
+                body.append(strip);
+            }
+
+            if (vpc.is_default) {
+                const det = el('details', 'vpc-collapse');
+                const sum = el('summary');
+                sum.append(icon('caret-right'), document.createTextNode('ดูข้างใน'));
+                det.append(sum, body);
+                box.append(det);
+            } else {
+                box.append(body);
+            }
+            return box;
+        }
+
+        function regionEl(region) {
+            const box = el('div', 'rgn');
+            box.dataset.scope = `Region ${region.name}`;
+            box.append(frameLabel('rgn', 'globe-hemisphere-west', `Region ${region.name}`, 'พื้นที่ทางภูมิศาสตร์ที่ของทุกชิ้นด้านในตั้งอยู่'));
+            const body = el('div', 'rgn-body');
+            for (const vpc of region.vpcs || []) body.append(vpcEl(vpc));
+            box.append(body);
+            return box;
+        }
+
+        // Logical links, used by the inspector's "Connections" list. The picture itself shows
+        // containment, so these describe who talks to whom rather than being drawn as arrows.
+        function buildEdges(regions) {
+            const edges = [];
+            const push = (from, to, kind, label) => { if (from && to) edges.push({ from: { r: from }, to: { r: to }, kind, label }); };
+            for (const region of regions) {
+                for (const vpc of region.vpcs || []) {
+                    const lbs = (vpc.edge.load_balancers || []).map(resolve).filter(Boolean);
+                    const tgs = (vpc.edge.target_groups || []);
+                    const waf = (vpc.edge.waf || []).map(resolve).filter(Boolean);
+                    for (const w of waf) for (const lb of lbs) push(w, lb, 'security', 'inspects');
+                    for (const tgRaw of tgs) {
+                        const tg = resolve(tgRaw);
+                        for (const lb of lbs) push(lb, tg, 'traffic', 'forwards to');
+                        for (const m of tgRaw.members || []) push(tg, resolve(m.target_id), 'traffic', m.state);
+                    }
+                    for (const sgRaw of vpc.security_groups || []) {
+                        const sg = resolve(sgRaw);
+                        for (const id of sgRaw.attached_to || []) push(sg, resolve(id), 'security', 'guards');
+                    }
+                    for (const az of vpc.azs || []) {
+                        for (const entries of Object.values(az.bands || {})) {
+                            for (const entry of entries) {
+                                for (const n of entry.nodes || []) {
+                                    if (n.type === 'aws_nat_gateway') {
+                                        push(resolve(n), resolve(vpc.edge.internet_gateway), 'egress', 'egress');
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            return edges;
+        }
+
         function renderDiagram() {
-            const d = state.data, world = $('dg-world'), empty = $('dg-empty'), vp = $('dg-viewport');
-            if (!d.resources.length) { renderEmptyOnly(); return; }
+            const d = state.data, world = $('dg-world'), empty = $('dg-empty');
+            const regions = ((d.topology && d.topology.regions) || []).filter((r) => (r.vpcs || []).length);
+            if (!regions.length) { renderEmptyOnly(); return; }
             empty.hidden = true;
             $('dg-controls').hidden = false;
             $('dg-hint').hidden = false;
-            layout = buildLayout(d.resources);
+
             world.replaceChildren();
-            world.style.width = `${layout.w}px`;
-            world.style.height = `${layout.h}px`;
+            world.style.width = '';
+            world.style.height = '';
+            world.classList.toggle('is-plain', state.plain);
 
-            const svg = svgEl('svg', { width: layout.w, height: layout.h, 'aria-hidden': 'true' });
-            const defs = svgEl('defs', {});
-            for (const k of ['traffic', 'egress', 'security', 'provision']) {
-                const m = svgEl('marker', { id: `ar-${k}`, viewBox: '0 0 8 8', refX: 7, refY: 4, markerWidth: 7, markerHeight: 7, orient: 'auto-start-reverse' });
-                m.append(svgEl('path', { d: 'M 0 0.5 L 7.5 4 L 0 7.5 z', class: `arrow k-${k}` }));
-                defs.append(m);
-            }
-            svg.append(defs);
-            for (const g of layout.groups) svg.append(svgEl('rect', { x: g.x, y: g.y, width: g.w, height: g.h, rx: g.kind.startsWith('band') ? 10 : 12, class: `g-rect is-${g.kind}` }));
-            const keyOf = (n) => (n && n.r ? n.r.key : '__ext');
-            layout.edges.forEach((e) => {
-                const g = edgeGeom(e);
-                e.mid = g.mid;
-                const p = svgEl('path', { d: g.d, class: `edge k-${e.kind}`, 'marker-end': `url(#ar-${e.kind})`, 'data-a': keyOf(e.from), 'data-b': keyOf(e.to) });
-                svg.append(p);
-                e.path = p;
+            const canvas = el('div', 'dg-canvas');
+            for (const region of regions) canvas.append(regionEl(region));
+            world.append(canvas);
+
+            // Measure the rendered frames once so pan/zoom, fit and "reveal from the table"
+            // keep working on real pixel positions instead of a hand-computed layout.
+            const wr = world.getBoundingClientRect();
+            const s = view.s || 1;
+            const nodes = [];
+            world.querySelectorAll('[data-key]').forEach((node) => {
+                const r = state.data.resources.find((x) => x.key === node.dataset.key);
+                if (!r) return;
+                const box = node.getBoundingClientRect();
+                nodes.push({ r, el: node, x: (box.left - wr.left) / s, y: (box.top - wr.top) / s, w: box.width / s, h: box.height / s });
             });
-            world.append(svg);
+            layout = { w: Math.max(world.scrollWidth, 1), h: Math.max(world.scrollHeight, 1), nodes, chips: [], edges: buildEdges(regions) };
 
-            for (const lb of layout.labels) {
-                const l = el('div', `g-label${lb.zone ? ' z-' + lb.zone : ''}`);
-                l.style.left = `${lb.x}px`; l.style.top = `${lb.y}px`;
-                l.append(icon(lb.ico), document.createTextNode(lb.title));
-                if (lb.value) l.append(el('b', null, lb.value));
-                world.append(l);
-            }
-            for (const e of layout.edges) {
-                if (!e.label) continue;
-                const t = el('span', `e-label k-${e.kind}`, e.label);
-                t.style.left = `${e.mid[0]}px`; t.style.top = `${e.mid[1]}px`;
-                t.dataset.a = keyOf(e.from); t.dataset.b = keyOf(e.to);
-                e.labelEl = t;
-                world.append(t);
-            }
-            for (const gh of layout.ghosts) {
-                const g = el('div', 'ghost', gh.label);
-                Object.assign(g.style, { left: `${gh.x}px`, top: `${gh.y}px`, width: `${gh.w}px`, height: `${gh.h}px` });
-                world.append(g);
-            }
-            for (const c of layout.chips) {
-                const b = el('button', 'chip');
-                b.type = 'button';
-                Object.assign(b.style, { left: `${c.x}px`, top: `${c.y}px`, width: `${c.w}px`, height: `${c.h}px` });
-                b.append(statusDot(c.r), el('span', 'mono', c.r.spec || c.r.name));
-                if (c.r.az) b.append(el('span', 'az', c.r.az));
-                b.title = c.r.name;
-                b.setAttribute('aria-label', `Subnet ${c.r.name}, ${c.r.spec}${c.r.az ? ', ' + c.r.az : ''}`);
-                b.dataset.key = c.r.key;
-                b.addEventListener('click', () => select(c.r.key));
-                world.append(b);
-            }
-            for (const n of layout.nodes) world.append(nodeEl(n));
             applySelection();
             sizeViewport();
             if (!view.moved || view.w !== layout.w || view.h !== layout.h) fit();
             view.w = layout.w; view.h = layout.h;
-        }
-
-        function nodeEl(n) {
-            if (n.external) {
-                const e = el('div', 'node is-external');
-                Object.assign(e.style, { left: `${n.x}px`, top: `${n.y}px`, width: `${n.w}px`, height: `${n.h}px` });
-                e.append(icon('globe-simple'), el('span', 'node-name', 'Internet'));
-                return e;
-            }
-            const r = n.r;
-            const b = el('button', `node ${svcClass(r)}`);
-            b.type = 'button';
-            if (n.aux) b.classList.add('is-aux');
-            if (r.health === 'inactive') b.classList.add('is-inactive');
-            Object.assign(b.style, { left: `${n.x}px`, top: `${n.y}px`, width: `${n.w}px`, height: `${n.h}px` });
-            b.dataset.key = r.key;
-            if (n.strip) {
-                b.classList.add('node-strip');
-                b.append(icon('stack'), el('span', 'node-name', r.name));
-                b.append(el('span', 'node-sub', r.spec));
-            } else {
-                const ic = el('span', 'node-ico');
-                ic.append(icon(isBuilder(r) ? 'wrench' : typeIcon(r.type)));
-                const lbl = nodeLabel(n);
-                const txt = el('span', 'node-txt');
-                const nm = el('span', `node-name${isMember(r) ? ' mono' : ''}`, lbl.name);
-                txt.append(el('span', 'node-kicker', lbl.kicker), nm);
-                if (lbl.sub) txt.append(el('span', 'node-sub', lbl.sub));
-                b.append(ic, txt, statusDot(r));
-            }
-            b.title = `${r.name} (${typeLabel(r.type)})`;
-            b.setAttribute('aria-label', `${r.name}, ${isBuilder(r) ? 'AMI builder ' : ''}${typeLabel(r.type)}, status ${r.status}${r.assumed ? ', not verified' : ''}`);
-            b.addEventListener('click', () => select(r.key));
-            return b;
         }
 
         // ---------- pan / zoom ----------
@@ -1520,6 +1774,34 @@
 
         $('refresh-btn').addEventListener('click', () => load(true));
         $('retry-btn').addEventListener('click', () => load(true));
+
+        // อธิบายแบบง่าย: เปิดแล้วทุกกล่องในแผนภาพจะมีคำอธิบายภาษาไทยหนึ่งบรรทัด
+        $('plain-btn').addEventListener('click', () => {
+            state.plain = !state.plain;
+            $('plain-btn').setAttribute('aria-pressed', state.plain ? 'true' : 'false');
+            $('plain-btn').classList.toggle('is-on', state.plain);
+            $('dg-world').classList.toggle('is-plain', state.plain);
+            try { localStorage.setItem('plain', state.plain ? '1' : '0'); } catch (_) {}
+            if (state.data) renderDiagram();
+        });
+        try {
+            if (localStorage.getItem('plain') === '1') $('plain-btn').click();
+        } catch (_) {}
+
+        // ป้าย "ตอนนี้อยู่ในกรอบไหน" ตามเมาส์ เพื่อให้ยังรู้ตัวว่าอยู่ Region/VPC ใดตอนซูมลึก
+        $('dg-viewport').addEventListener('pointermove', (ev) => {
+            const scope = ev.target.closest('[data-scope]');
+            const badge = $('dg-scope');
+            if (!scope) { badge.hidden = true; return; }
+            const trail = [];
+            for (let node = scope; node; node = node.parentElement.closest('[data-scope]')) {
+                trail.unshift(node.dataset.scope);
+                if (!node.parentElement) break;
+            }
+            badge.textContent = trail.join('  ›  ');
+            badge.hidden = false;
+        });
+        $('dg-viewport').addEventListener('pointerleave', () => { $('dg-scope').hidden = true; });
         $('q').addEventListener('input', (ev) => { state.query = ev.target.value; if (state.data) renderTable(); });
         $('cat').addEventListener('change', (ev) => { state.cat = ev.target.value; if (state.data) renderTable(); });
         document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && state.selected) select(null); });
