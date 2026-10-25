@@ -61,7 +61,11 @@ Settings → Secrets and variables → Actions ของแต่ละ repo
 - ไม่ต้องมี `DASHBOARD_TOKEN` อีกแล้ว — dashboard ไม่รับข้อมูลที่ POST เข้ามาแล้ว
   มันอ่านจาก S3 ที่ Lambda เขียนไว้ ไม่มี endpoint ให้ยิงข้อมูลเข้า
 - คีย์ AWS Academy หมดอายุทุก ~4 ชม. หมดแล้วต้องวางใหม่ทั้ง 3 ตัว ในทั้งสอง repo และใน `~/.aws/credentials`
-- credentials ของ repo แอปต้องการสิทธิ์ push ECR อย่างเดียว ไม่ต้องให้สิทธิ์แตะ infrastructure
+- **credentials ของ repo แอปต้องการมากกว่าแค่ push ECR แล้ว** เพราะ CI ทำ rollout เองหลัง push
+  ต้องมี `ec2:DescribeLaunchTemplateVersions`, `ec2:CreateLaunchTemplateVersion`, `ec2:ModifyLaunchTemplate`,
+  `autoscaling:DescribeAutoScalingGroups`, `autoscaling:DescribeInstanceRefreshes`, `autoscaling:CreateOrUpdateTags`
+  ใน AWS Academy ใช้คีย์ชุดเดียวกันอยู่แล้วจึงผ่าน แต่ถ้าส่งต่อให้คนนอกจริงๆ นี่คือการให้สิทธิ์แตะของที่รันอยู่
+  ถ้าไม่อยากให้ ให้ลบ job `rollout` ออกจาก `ci.yml` แล้วกลับไปกด **Launch Image** เองที่ repo นี้แทน
 
 ---
 
@@ -110,7 +114,10 @@ AWS Academy ให้ `us-east-1` อยู่แล้ว
 ## 8. กับดักที่ต้องรู้ก่อนกด
 
 - **ห้ามกด Infra Setup ซ้ำตอนของยังอยู่** = `terraform apply` รอบสอง จะสร้าง builder ใหม่แล้วลบ AMI ที่ launch template ใช้อยู่ (ข้อห้าม #3 ใน README) — workflow กันไว้ให้แล้ว แต่ติ๊ก `allow_reapply` ข้ามได้ อย่าติ๊กถ้าไม่เข้าใจผลที่ตามมา
-- **เปลี่ยน image ของแอปใช้ `Launch Image` เท่านั้น** ห้ามลบ ASG หรือเครื่องทิ้งเอง
+- **เปลี่ยน image ของแอปต้องผ่าน instance refresh เท่านั้น** (CI ฝั่งแอปทำให้เอง หรือกด `Launch Image`)
+  ห้ามลบ ASG หรือเครื่องทิ้งเอง
+- **push เข้า `main` ของ repo แอป = ปล่อยขึ้น production ทันที** ไม่มีขั้นให้คนกดยืนยันอีกแล้ว
+  งานที่ยังไม่พร้อมปล่อยให้อยู่บน branch อื่นแล้วเปิด PR (PR ทดสอบและสแกนให้ แต่ไม่ push ไม่ rollout)
 - **CI ฝั่งแอปกด Run workflow จาก branch ไหนก็ push ขึ้น ECR** เพราะเงื่อนไขเป็น `if: github.event_name != 'pull_request'` ไม่ได้เช็ค branch — จะกันจริงต้องเปลี่ยนเป็น `github.ref == 'refs/heads/main'`
 - **ไฟล์ `.sh` ต้องเป็น LF** ตั้ง `git config --global core.autocrlf input` ก่อน clone
 - **ห้ามรัน Terraform จาก PowerShell/CMD** `null_resource.terminate_builder` ใช้ `/bin/sh` ให้ใช้ WSL
@@ -128,5 +135,6 @@ AWS Academy ให้ `us-east-1` อยู่แล้ว
 6. push repo แอปขึ้น `main` → รอ CI ผ่านครบทุก job → เช็คว่ามี `latest` ใน ECR
 7. Actions ของ repo นี้ → **Infra Setup** → Run workflow (`image_tag` = `latest`)
 8. เปิด `http://<alb>/` และ `http://<alb>/dashboard` จาก step summary
-9. มี image ใหม่เมื่อไหร่ → **Launch Image** (ไม่ใช่ Infra Setup ซ้ำ)
+9. จากนี้ push เข้า `main` ของ repo แอปได้เลย CI จะ push ขึ้น ECR แล้ว rollout ให้เอง
+   (อยากย้อน tag เก่า → **Launch Image** ที่ repo นี้ ไม่ใช่ Infra Setup ซ้ำ)
 10. เลิกใช้แล้ว → **Destroy** → พิมพ์ `destroy` ยืนยัน

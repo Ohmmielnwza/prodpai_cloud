@@ -14,11 +14,14 @@ Terraform + GitHub Actions สำหรับวาง topology ทั้งช�
 **ฝั่งแอป (`plodphai-todo-list`) — CI เท่านั้น**
 
 ```
-repo แอป ── CI: test → Semgrep/Trivy/Gitleaks/hadolint → build → smoke → scan image → SBOM → push ──▶ ECR
-                                                                           (tag: commit SHA + latest)
+repo แอป ── CI: test → Semgrep/Trivy/Gitleaks/hadolint → build → smoke → scan image → SBOM
+                 └─ push ──▶ ECR (tag: commit SHA + latest)
+                 └─ rollout: launch template version ใหม่ → ติด tag ที่ ASG → ทยอยเปลี่ยนเครื่อง
+                    (เฉพาะ main เท่านั้น)
 ```
 
-CI ไม่แตะ infrastructure เลย ฝั่งนั้นได้ credentials ที่ push ECR ได้อย่างเดียว
+CI **ไม่แตะรูปร่างของ infrastructure** — ขั้น rollout แค่เปลี่ยนว่าเครื่องรัน image ไหน
+ไม่มีการสร้างหรือลบ resource ใดๆ การวาง topology ทั้งชุดยังเป็นของฝั่ง infra อย่างเดียว
 
 **ฝั่ง infra (repo นี้) — Infra Setup / Launch Image / Destroy**
 
@@ -28,10 +31,13 @@ Actions → Infra Setup (กดเอง ครั้งแรกครั้ง
    ├─ build + push image ของ dashboard ขึ้น ECR
    └─ terraform apply → VPC / ALB / ASG / Lambda / dashboard EC2
 
-Actions → Launch Image (กดทุกครั้งที่แอปมี image ใหม่)
+Actions → Launch Image (กดเอง เมื่อต้องการย้อน tag เก่าหรือปล่อย tag ที่เลือกเอง)
    ├─ create-launch-template-version (เปลี่ยนเฉพาะ IMAGE_TAG ใน user data)
    └─ ติด tag ที่ ASG → instance_refresh แบบ Rolling ทยอยเปลี่ยนเครื่องเอง
 ```
+
+> ปกติไม่ต้องกด Launch Image แล้ว เพราะ CI ฝั่งแอปทำขั้นนี้ให้เองหลัง push ขึ้น ECR
+> มันมีไว้สำหรับ rollback และกรณีที่อยากเลือก tag เอง (ตรรกะเดียวกันเป๊ะ)
 
 ```
 Internet ──▶ WAF ──▶ ALB :80 ─┬─ "/"           ──▶ TG :80   ──▶ ASG 2–3 เครื่อง (private a/b)
@@ -52,10 +58,11 @@ Falco บนทุกเครื่อง ── Critical ──▶ CloudWatch 
 | Repo | หน้าที่ | ใครรัน |
 |---|---|---|
 | `prodpai_cloud` (repo นี้) | Terraform, workflow `infra_setup` / `launch_image` / `destroy`, Lambda, โค้ด dashboard | เรา (เจ้าของบัญชี AWS) |
-| `plodphai-todo-list` | โค้ดแอป + `ci.yml` ที่ push image ขึ้น ECR ของเรา | ฝั่งแอป |
+| `plodphai-todo-list` | โค้ดแอป + `ci.yml` ที่ push image ขึ้น ECR แล้ว rollout เข้า ASG ให้เอง | ฝั่งแอป |
 
 - ALB เสิร์ฟได้ **ทีละ 1 app** ขึ้นกับชื่อ ECR ใน `ec2.tf:14` ต้องตรงกับ `ECR_REPOSITORY` ในทั้งสอง workflow
-- เครื่องดึง image **ตอนบูตเท่านั้น** มี image ใหม่ต้องใช้ **Launch Image** ไม่ใช่กด Infra Setup ซ้ำ
+- เครื่องดึง image **ตอนบูตเท่านั้น** การเปลี่ยน image จึงต้องผ่าน instance refresh เสมอ
+  CI ฝั่งแอปสั่งให้เองหลัง push หรือกด **Launch Image** เอง — ไม่ใช่กด Infra Setup ซ้ำ
 
 ---
 
@@ -65,7 +72,7 @@ Falco บนทุกเครื่อง ── Critical ──▶ CloudWatch 
 2. **ห้ามให้ไฟล์ `.sh` เป็น CRLF** — clone บน Windows ด้วย `core.autocrlf=true` จะเจอ `remote-exec provisioner error ... exit status 127` ตั้ง `git config --global core.autocrlf input` **ก่อน clone**
 3. **`terraform apply` ครั้งเดียวให้จบ แล้วอย่า apply ซ้ำ** — apply รอบสองจะสร้าง builder ใหม่และ **ลบ AMI ตัวที่ launch template ใช้อยู่** (`ignore_changes = [image_id]`) ทำให้ ASG สร้างเครื่องใหม่ไม่ได้อีก
    workflow `Infra Setup` กันไว้ให้แล้ว ถ้าเจอ ASG อยู่จะหยุดทันที เว้นแต่ติ๊ก `allow_reapply` เอง
-   **อยากเปลี่ยนเป็น image ใหม่ → ใช้ `Launch Image`**
+   **อยากเปลี่ยนเป็น image ใหม่ → ปล่อยให้ CI ฝั่งแอปทำ หรือกด `Launch Image`**
 4. **ห้าม image ที่รันด้วย user `nginx`/`www-data`/`apache` มี `HEALTHCHECK` แบบ shell form** — Falco จะจับ `sh -c ...` เป็น "Shell Spawned by Web User" แล้วกักเครื่องวนไม่จบ Todo List เขียนเป็น exec form (`CMD ["wget", ...]`) จึงไม่โดน เอาแอปอื่นมาใส่ต้องเช็คจุดนี้
 
 ---
@@ -155,10 +162,14 @@ curl -s "$(terraform output -raw dashboard_url)/health" # ต้องได้ 
 
 ## 6. อัปเดตแอปหลัง deploy ไปแล้ว
 
-ฝั่งแอป push → CI ดัน image ใหม่ขึ้น ECR → เรากด Actions → **Launch Image** → ใส่ tag นั้น
+**ไม่ต้องทำอะไรเลย** — ฝั่งแอป push เข้า `main` → CI ทดสอบ สแกน build push ขึ้น ECR
+แล้วสั่ง rollout ต่อให้ในรันเดียวกัน ใช้เวลารวม ~10–15 นาที
 
-ไม่มีการลบเครื่องแล้วสร้างใหม่ทั้งชุด workflow แค่สร้าง launch template version ใหม่
-แล้วติด tag ที่ ASG ให้ `instance_refresh` (Rolling, min healthy 50%, warmup 180s) ทำงานเอง ใช้เวลา ~6–10 นาที
+ขั้น rollout สร้าง launch template version ใหม่ (เปลี่ยนแค่ tag ของ image, AMI เดิม)
+แล้วติด tag ที่ ASG ให้ `instance_refresh` (Rolling, min healthy 50%, warmup 180s) ทยอยเปลี่ยนเครื่องเอง
+ไม่มีการลบเครื่องแล้วสร้างใหม่ทั้งชุด และถ้ามีรอบ refresh ค้างอยู่มันจะรอให้จบก่อน
+
+**ย้อนกลับ (rollback)** — Actions ของ repo นี้ → **Launch Image** → ใส่ tag เก่าที่อยากกลับไป
 
 ## 7. ลบทั้งหมด
 
