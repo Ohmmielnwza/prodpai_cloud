@@ -130,7 +130,7 @@ jobs:
 
       - name: Scan dashboard image
         if: ${{ !inputs.skip_dashboard_build }}
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ steps.login-ecr.outputs.registry }}/${{ env.DASHBOARD_ECR_REPOSITORY }}:${{ github.sha }}
           scan-type: image
