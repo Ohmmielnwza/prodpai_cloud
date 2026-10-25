@@ -1,34 +1,73 @@
-name: Terraform Destroy
+name: Destroy
+
+# Manual only, run by us as the owner of the AWS account: removes everything
+# Terraform created from this repository — the dashboard EC2 included, since it is
+# part of the Terraform configuration now.
+# ECR images, the Terraform state bucket and the dashboard data bucket (prod-pai-logs)
+# are deliberately outside Terraform and stay, so snapshots and incident records survive.
 
 on:
   workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "destroy" to confirm'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+# Same group as infra_setup.yaml, so apply and destroy never run at the same time.
+concurrency:
+  group: prodpai-terraform
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
 
 jobs:
   destroy:
+    name: Terraform destroy
+    if: inputs.confirm == 'destroy'
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+          terraform_wrapper: false
 
-      - name: Terraform Init
-        run: terraform init
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
-
-      - name: Terraform Destroy
-        run: terraform destroy -auto-approve -var="image_tag=destroy"
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
-
-      - name: Notify Dashboard (Optional)
+      - name: Terraform destroy
         run: |
-          curl -X POST -H "Content-Type: application/json" \
-            -d '{"status": "DESTROYED", "message": "All infrastructure has been destroyed."}' \
-            https://dashboard-prod-pai-cloud.onrender.com/api/update || true
+          terraform init -input=false
+          # The ASG drain can exceed Terraform's 10 minute wait; a second run removes what is left.
+          for attempt in 1 2; do
+            if terraform destroy -auto-approve -input=false; then
+              exit 0
+            fi
+            echo "::warning::destroy attempt $attempt failed, retrying"
+          done
+          exit 1
+
+      - name: Check nothing is left in the state
+        run: |
+          left=$(terraform state list | grep -v '^data\.' || true)
+          if [ -n "$left" ]; then
+            echo "::error::Resources still in the state:"
+            echo "$left"
+            exit 1
+          fi
+          echo "State is empty"
+

@@ -1,0 +1,174 @@
+name: Infra Setup
+
+# วาง topology ทั้งหมดลง AWS: VPC, subnet, NAT, ALB + listener rule, ASG,
+# Lambda (quarantine + aggregator), S3 endpoint และเครื่อง dashboard ใน private subnet
+#
+# รันด้วยมือโดยเจ้าของบัญชี AWS เท่านั้น ไม่ผูกกับ push เพราะ apply ทุก push
+# แปลว่าใครกด merge ก็แก้ production ได้
+#
+# ของที่ workflow นี้ "ไม่" ทำ: build image ของแอป todo-list — นั่นเป็นหน้าที่ CI
+# ของ repo prod-pai-todolist ส่วนการทยอยอัปเดตเครื่องเมื่อมี image ใหม่อยู่ที่ launch_image.yaml
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "tag ของ image แอป todo-list ใน ECR (commit SHA จาก CI ของแอป หรือ latest)"
+        type: string
+        default: latest
+      skip_dashboard_build:
+        description: "ข้ามการ build image ของ dashboard (ใช้ตัวที่อยู่ใน ECR อยู่แล้ว)"
+        type: boolean
+        default: false
+      allow_reapply:
+        description: "ยืนยันว่าตั้งใจ apply ทับของที่ยังอยู่ (อ่านคำเตือนใน README ก่อน)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# กลุ่มเดียวกับ destroy.yml เพื่อไม่ให้ apply กับ destroy ทำงานพร้อมกัน
+concurrency:
+  group: prodpai-terraform
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+  # repository ที่ ec2.tf ดึง image ของแอปไปใช้
+  ECR_REPOSITORY: plodphai-todo-list
+  DASHBOARD_REPOSITORY: prodpai_dashboard
+  IMAGE_TAG: ${{ inputs.image_tag }}
+
+jobs:
+  deploy:
+    name: Deploy infrastructure
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # ถ้า image ที่ขอไม่มีจริง ASG จะปั้นเครื่องที่ pull ไม่ขึ้นมาทั้งชุด ตรวจก่อนดีกว่า
+      - name: Check application image exists in ECR
+        run: |
+          if ! aws ecr describe-images --repository-name "$ECR_REPOSITORY" \
+               --image-ids imageTag="$IMAGE_TAG" >/dev/null 2>&1; then
+            echo "::error::$ECR_REPOSITORY:$IMAGE_TAG is not in ECR (wait for the app's CI to push it)"
+            exit 1
+          fi
+
+      # apply รอบสองจะสร้าง builder ใหม่แล้ว "ลบ AMI ตัวที่ launch template ใช้อยู่"
+      # ผลคือ ASG ปั้นเครื่องใหม่ไม่ได้อีกเลย อยากเปลี่ยนเป็น image ใหม่ให้ใช้ Launch Image แทน
+      - name: Refuse to re-apply over a live stack
+        if: ${{ !inputs.allow_reapply }}
+        run: |
+          asg=$(aws autoscaling describe-auto-scaling-groups \
+            --query "AutoScalingGroups[?starts_with(AutoScalingGroupName, 'prod-pai-env-asg')].AutoScalingGroupName | [0]" \
+            --output text)
+          if [ "$asg" != "None" ] && [ -n "$asg" ]; then
+            echo "::error::มี stack อยู่แล้ว ($asg) — ถ้าจะเปลี่ยน image ให้รัน Launch Image แทน. ถ้าตั้งใจ apply ทับจริงให้ติ๊ก allow_reapply"
+            exit 1
+          fi
+
+      # bucket นี้ตั้งใจสร้างนอก Terraform เพราะต้องอยู่รอดจาก destroy
+      - name: Ensure dashboard data bucket exists
+        run: |
+          bucket=prod-pai-logs
+          if ! aws s3api head-bucket --bucket "$bucket" 2>/dev/null; then
+            echo "Creating s3://$bucket"
+            aws s3api create-bucket --bucket "$bucket" --region "$AWS_REGION"
+            aws s3api put-public-access-block --bucket "$bucket" \
+              --public-access-block-configuration \
+              BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
+          fi
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # หน้า dashboard อยู่ใน repo นี้ เครื่อง dashboard จึง pull image จาก ECR ตัวนี้
+      - name: Build and push dashboard image
+        if: ${{ !inputs.skip_dashboard_build }}
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          TAG: ${{ github.sha }}
+        run: |
+          aws ecr describe-repositories --repository-names "$DASHBOARD_REPOSITORY" >/dev/null 2>&1 \
+            || aws ecr create-repository --repository-name "$DASHBOARD_REPOSITORY" >/dev/null
+          docker build -f dashboard/Dockerfile \
+            -t "$REGISTRY/$DASHBOARD_REPOSITORY:$TAG" \
+            -t "$REGISTRY/$DASHBOARD_REPOSITORY:latest" ./dashboard
+          docker push "$REGISTRY/$DASHBOARD_REPOSITORY:$TAG"
+          docker push "$REGISTRY/$DASHBOARD_REPOSITORY:latest"
+
+      - name: Scan dashboard image
+        if: ${{ !inputs.skip_dashboard_build }}
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ steps.login-ecr.outputs.registry }}/prodpai_dashboard:${{ github.sha }}
+          scan-type: image
+          scanners: vuln
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "0"
+          format: table
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+          terraform_wrapper: false
+
+      - name: Terraform format and validate
+        run: |
+          terraform fmt -check -recursive
+          terraform init -input=false
+          terraform validate
+
+      - name: Terraform plan
+        run: |
+          terraform plan -input=false -out=tfplan \
+            -var="image_tag=$IMAGE_TAG" \
+            -var="dashboard_image_tag=${{ github.sha }}"
+
+      - name: Terraform apply
+        run: terraform apply -input=false -auto-approve tfplan
+
+      # apply จบไม่ได้แปลว่าเว็บขึ้น ต้องเห็น target เขียวจริงถึงจะเรียกว่า deploy สำเร็จ
+      - name: Wait for targets to become healthy
+        run: |
+          for tg in $(aws elbv2 describe-target-groups \
+                        --query "TargetGroups[?starts_with(TargetGroupName, 'prod-pai') || starts_with(TargetGroupName, 'dashboard')].TargetGroupArn" \
+                        --output text); do
+            echo "waiting for $tg"
+            for i in $(seq 1 40); do
+              states=$(aws elbv2 describe-target-health --target-group-arn "$tg" \
+                        --query 'TargetHealthDescriptions[].TargetHealth.State' --output text)
+              echo "  $states"
+              if [ -n "$states" ] && ! echo "$states" | grep -qv healthy; then
+                break
+              fi
+              sleep 15
+            done
+          done
+
+      - name: Summary
+        run: |
+          {
+            echo "### Deployed"
+            echo ""
+            echo "- Application: $(terraform output -raw app_url)"
+            echo "- Dashboard: $(terraform output -raw dashboard_url)"
+            echo "- Data: $(terraform output -raw dashboard_data_location)"
+            echo ""
+            echo "มี image ใหม่ของแอปเมื่อไหร่ ให้รัน **Launch Image** ด้วย tag นั้น ไม่ต้องรัน workflow นี้ซ้ำ"
+          } >> "$GITHUB_STEP_SUMMARY"
