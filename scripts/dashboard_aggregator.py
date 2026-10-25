@@ -33,6 +33,15 @@ S3_BUCKET = os.environ.get('S3_BUCKET')
 S3_KEY = os.environ.get('S3_KEY', 'dashboard/current_infra.json')
 INCIDENT_PREFIX = os.environ.get('INCIDENT_PREFIX', 'dashboard/incidents/')
 
+# ผล Cost Explorer ที่เก็บไว้ใช้ซ้ำ (CE คิด $0.01 ต่อ request)
+COST_CACHE_KEY = os.environ.get('COST_CACHE_KEY', 'dashboard/cost_cache.json')
+COST_CACHE_TTL = int(os.environ.get('COST_CACHE_TTL_SECONDS', str(6 * 3600)))
+# error ชั่วคราว (throttle, network) ไม่ควรถูกจำไว้นานเท่าผลจริง จึงถามใหม่เร็วกว่า
+COST_CACHE_RETRY = int(os.environ.get('COST_CACHE_RETRY_SECONDS', '900'))
+# error ที่ถามใหม่ไปก็ได้ผลเดิม (บัญชี Academy มักปิดสิทธิ์ CE) จำไว้เท่า TTL ปกติ
+CE_PERMANENT_ERRORS = {'AccessDeniedException', 'AccessDenied', 'UnauthorizedOperation',
+                       'OptInRequired', 'UnrecognizedClientException'}
+
 # ARN ของ target group ที่ "นับ" เข้าสูตร healthy (ส่งมาจาก Terraform)
 COUNTED_TG_ARNS = [a for a in [os.environ.get('APP_TG_ARN'), os.environ.get('DASH_TG_ARN')] if a]
 
@@ -57,7 +66,7 @@ EIP_HOURLY = 0.005           # EIP ที่ผูกกับ NAT คิดเ�
 WAF_ACL_MONTHLY = 5.0
 WAF_RULE_MONTHLY = 1.0
 S3_GB_MONTHLY = 0.023
-LAMBDA_MONTHLY_EST = 0.20    # ยิงทุก 2 นาที ยังอยู่ในโควต้าฟรีแทบทั้งหมด
+LAMBDA_MONTHLY_EST = 0.20    # รันตอนกด Sync AWS เท่านั้น อยู่ในโควต้าฟรีแทบทั้งหมด
 
 
 # ==========================================
@@ -128,23 +137,23 @@ def collect_network():
         if rt:
             for route in rt.get('Routes', []):
                 if route.get('GatewayId', '').startswith('igw-'):
-                    return 'public', rt['RouteTableId']
+                    return 'public', rt['RouteTableId'], route['GatewayId']
                 if route.get('NatGatewayId'):
-                    return 'private', rt['RouteTableId']
-            return 'isolated', rt['RouteTableId']
+                    return 'private', rt['RouteTableId'], route['NatGatewayId']
+            return 'isolated', rt['RouteTableId'], None
 
         tags = tag_map(subnet)
         tier = (tags.get('Tier') or tags.get('Name') or '').lower()
         if 'public' in tier:
-            return 'public', None
+            return 'public', None, None
         if 'private' in tier:
-            return 'private', None
-        return 'unknown', None
+            return 'private', None, None
+        return 'unknown', None, None
 
     enriched_subnets = []
     for sn in subnets:
         tags = tag_map(sn)
-        zone_type, rt_id = zone_type_of(sn)
+        zone_type, rt_id, route_target = zone_type_of(sn)
         enriched_subnets.append({
             'id': sn['SubnetId'],
             'name': name_of(tags, sn['SubnetId']),
@@ -154,6 +163,8 @@ def collect_network():
             'state': sn['State'],
             'zone_type': zone_type,
             'route_table_id': rt_id,
+            # ปลายทางของ 0.0.0.0/0 (igw-... หรือ nat-...) หน้าเว็บใช้ลากเส้น route ให้ตรงของจริง
+            'route_target': route_target,
             'available_ips': sn.get('AvailableIpAddressCount'),
             'tags': tags,
         })
@@ -397,6 +408,7 @@ def collect_load_balancing():
                 'health_check_path': tg.get('HealthCheckPath'),
                 'counted_for_health': arn in COUNTED_TG_ARNS,
                 'members': members,
+                'load_balancer_arns': tg.get('LoadBalancerArns', []),
                 'spec': f"port {tg.get('Port')} | {tg.get('HealthCheckPath')}",
                 'tags': {},
             })
@@ -525,9 +537,10 @@ def estimate_monthly_cost(instances, volumes, snapshots, lbs, nats, wafs):
 
 def cost_explorer_actuals():
     """ของจริงจาก Cost Explorer ถ้าบัญชีเปิดสิทธิ์ให้ (บัญชี Academy มักปิดไว้)"""
-    today = datetime.now(timezone.utc).date()
+    now = datetime.now(timezone.utc)
+    today = now.date()
     start = today.replace(day=1)
-    result = {'available': False}
+    result = {'available': False, 'fetched_at': now.isoformat()}
 
     try:
         resp = ce.get_cost_and_usage(
@@ -552,6 +565,7 @@ def cost_explorer_actuals():
         })
     except Exception as e:
         print(f"Cost Explorer (actuals) unavailable: {e}")
+        result['error_code'] = getattr(e, 'response', {}).get('Error', {}).get('Code', type(e).__name__)
         return result
 
     try:
@@ -568,9 +582,57 @@ def cost_explorer_actuals():
     return result
 
 
+def cached_cost_explorer_actuals():
+    """
+    คืนผล Cost Explorer จาก s3://<bucket>/COST_CACHE_KEY ถ้ายังไม่หมดอายุ ไม่งั้นถาม CE ใหม่
+
+    aggregator รันทุกครั้งที่กด Sync AWS ถ้าถาม CE ทุกรอบ
+    ค่าใช้จ่ายจะขึ้นกับจำนวนครั้งที่กด ไม่ใช่ความถี่ที่ตัวเลขเปลี่ยนจริง
+    มี cache นี้แล้ว กดรัวแค่ไหนก็ไม่ทำให้ถาม CE เพิ่ม
+
+    ข้อจำกัด: ถ้ามีหลายรอบรันพร้อมกันตอน cache เพิ่งหมดอายุ ทุกรอบจะถาม CE เอง
+    ไม่มี lock ข้ามรอบ จึงเกิน 2 request ต่อการหมดอายุหนึ่งครั้งได้ แต่จำกัดอยู่แค่จังหวะนั้น
+    """
+    now = datetime.now(timezone.utc)
+    if S3_BUCKET:
+        try:
+            body = s3.get_object(Bucket=S3_BUCKET, Key=COST_CACHE_KEY)['Body'].read()
+            cached = json.loads(body)
+            age = (now - datetime.fromisoformat(cached['fetched_at'])).total_seconds()
+            # ข้ามเดือนแล้วยอด month-to-date ต้องเริ่มนับใหม่ ใช้ของเดือนก่อนไม่ได้
+            same_month = cached.get('month') == now.strftime('%Y-%m')
+            if same_month and 0 <= age < cached.get('ttl', COST_CACHE_TTL):
+                print(f"Cost Explorer: using cache ({int(age)}s old)")
+                return cached['result']
+        except Exception as e:
+            # ไม่มีไฟล์ (รอบแรก) หรืออ่านไม่ได้ก็ไปถาม CE ตามปกติ
+            print(f"Cost Explorer cache miss: {e}")
+
+    result = cost_explorer_actuals()
+
+    if S3_BUCKET:
+        permanent = result.get('available') or result.get('error_code') in CE_PERMANENT_ERRORS
+        try:
+            s3.put_object(
+                Bucket=S3_BUCKET,
+                Key=COST_CACHE_KEY,
+                Body=json.dumps({
+                    'fetched_at': result['fetched_at'],
+                    'month': now.strftime('%Y-%m'),
+                    'ttl': COST_CACHE_TTL if permanent else COST_CACHE_RETRY,
+                    'result': result,
+                }),
+                ContentType='application/json',
+            )
+        except Exception as e:
+            print(f"Error writing Cost Explorer cache: {e}")
+
+    return result
+
+
 def build_cost(instances, volumes, snapshots, lbs, nats, wafs):
     estimate = estimate_monthly_cost(instances, volumes, snapshots, lbs, nats, wafs)
-    actual = cost_explorer_actuals()
+    actual = cached_cost_explorer_actuals()
 
     today = datetime.now(timezone.utc).date()
     days_in_month = (today.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
@@ -598,6 +660,8 @@ def build_cost(instances, volumes, snapshots, lbs, nats, wafs):
         'breakdown_monthly': estimate['breakdown'],
         'projected_end_of_month': end_of_month,
         'projected_next_30_days': actual.get('forecast_30d', estimate['total']),
+        # ตัวเลขจาก CE มาจาก cache อาจเก่ากว่า update_time ของไฟล์ได้ถึง COST_CACHE_TTL
+        'actuals_fetched_at': actual.get('fetched_at'),
         'days_left_in_month': days_left,
     }
 
@@ -726,10 +790,9 @@ def build_health_summary(tgs, instances):
 # Handler
 # ==========================================
 def lambda_handler(event, context):
-    # ถูกเรียกได้จากหลายทาง: schedule ทุก 2 นาที, EventBridge ตอน ASG สลับเครื่องหรือ
-    # instance refresh ขยับ, Lambda quarantine ตอนกักเครื่อง, และปุ่ม Sync บนหน้าเว็บ
-    # log ไว้ว่ารอบนี้มาจากไหน เวลาไล่ปัญหาจะรู้ว่า event ทำงานจริงหรือหล่น
-    trigger = (event or {}).get('detail-type') or (event or {}).get('source') or 'manual/schedule'
+    # ถูกเรียกจากปุ่ม Sync AWS บนหน้าเว็บทางเดียว
+    # ไม่มี EventBridge หรือ schedule ผูกไว้ ตั้งใจให้ dashboard ไม่ยุ่งกับ infra หลัก
+    trigger = (event or {}).get('detail-type') or (event or {}).get('source') or 'manual'
     print(f"triggered by: {trigger}")
 
     net = collect_network()
