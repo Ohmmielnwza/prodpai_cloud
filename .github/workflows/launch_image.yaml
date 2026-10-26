@@ -43,19 +43,30 @@ jobs:
         uses: actions/checkout@v4
 
       # ชื่อ bucket / ECR ของ account นี้อยู่ที่ .github/config.env ที่เดียว
-      # ส่งต่อให้ step ถัดไป (env) และให้ Terraform (TF_VAR_*) ในทีเดียว
+      # ส่งต่อให้ step ถัดไป (env) และให้ Terraform (TF_VAR_*) จากค่าชุดเดียวกัน
       - name: Load shared config
         run: |
-          grep -E '^[A-Z_]+=' .github/config.env | tr -d '\r' > "$RUNNER_TEMP/config.env"
+          # ตัด BOM (Notepad ใส่ให้) กับ CR (ไฟล์ที่ save บน Windows) ออกก่อน
+          sed -e '1s/^\xEF\xBB\xBF//' -e 's/\r$//' .github/config.env > "$RUNNER_TEMP/config.env"
+          if grep -nE '^[A-Z_]+[[:space:]]+=' "$RUNNER_TEMP/config.env"; then
+            echo "::error::.github/config.env ห้ามเว้นวรรครอบเครื่องหมาย = (เขียนเป็น KEY=value)"
+            exit 1
+          fi
           set -a; . "$RUNNER_TEMP/config.env"; set +a
           for key in TF_STATE_BUCKET DATA_BUCKET APP_ECR_REPOSITORY DASHBOARD_ECR_REPOSITORY; do
-            if [ -z "${!key:-}" ]; then
+            value="${!key:-}"
+            if [ -z "$value" ]; then
               echo "::error::$key is missing from .github/config.env"
               exit 1
             fi
+            # ชื่อ S3 / ECR ใช้ได้แค่ตัวเล็ก ตัวเลข . - _ (กันเครื่องหมายคำพูดหรือคอมเมนต์หลุดเข้ามาในชื่อ)
+            if ! [[ "$value" =~ ^[a-z0-9][a-z0-9._-]*$ ]]; then
+              echo "::error::$key='$value' ไม่ใช่ชื่อ bucket/ECR ที่ถูกต้อง (ใช้ได้แค่ a-z 0-9 . - _)"
+              exit 1
+            fi
+            echo "$key=$value" >> "$GITHUB_ENV"
           done
           {
-            cat "$RUNNER_TEMP/config.env"
             echo "TF_VAR_data_bucket=$DATA_BUCKET"
             echo "TF_VAR_app_ecr_repository=$APP_ECR_REPOSITORY"
             echo "TF_VAR_dashboard_ecr_repository=$DASHBOARD_ECR_REPOSITORY"
